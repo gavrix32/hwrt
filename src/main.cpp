@@ -91,27 +91,28 @@ int main() {
 
     // Check extensions
     uint32_t required_extension_count = 0;
-    const char **required_extensions_data = glfwGetRequiredInstanceExtensions(&required_extension_count);
+    const char **required_instance_extensions_data = glfwGetRequiredInstanceExtensions(&required_extension_count);
 
-    std::vector required_extensions(required_extensions_data, required_extensions_data + required_extension_count);
+    std::vector required_instance_extensions(required_instance_extensions_data,
+                                             required_instance_extensions_data + required_extension_count);
 
     if (enable_validation_layers) {
-        required_extensions.push_back(vk::EXTDebugUtilsExtensionName);
+        required_instance_extensions.push_back(vk::EXTDebugUtilsExtensionName);
     }
 
     auto available_extensions = context.enumerateInstanceExtensionProperties();
 
-    for (auto &required_extension: required_extensions) {
+    for (auto &extension: required_instance_extensions) {
         bool found = false;
         for (auto &available_extension: available_extensions) {
-            if (std::strcmp(available_extension.extensionName, required_extension) == 0) {
+            if (std::strcmp(available_extension.extensionName, extension) == 0) {
                 found = true;
                 break;
             }
         }
         if (!found) {
             throw std::runtime_error(
-                "Required GLFW extension not supported: " + std::string(required_extension));
+                "Required GLFW extension not supported: " + std::string(extension));
         }
     }
 
@@ -122,8 +123,8 @@ int main() {
 
     vk::InstanceCreateInfo instance_create_info{
         .pApplicationInfo = &app_info,
-        .enabledExtensionCount = static_cast<uint32_t>(required_extensions.size()),
-        .ppEnabledExtensionNames = required_extensions.data(),
+        .enabledExtensionCount = static_cast<uint32_t>(required_instance_extensions.size()),
+        .ppEnabledExtensionNames = required_instance_extensions.data(),
     };
 
     if (enable_validation_layers) {
@@ -154,11 +155,13 @@ int main() {
             debug_utils_messenger_create_info_EXT);
     }
 
-    std::set<std::string> required_device_extension_names;
-    required_device_extension_names.insert(vk::KHRDynamicRenderingExtensionName);
-    required_device_extension_names.insert(vk::KHRRayTracingPipelineExtensionName);
+    std::vector<const char *> required_device_extensions;
+    // required_device_extensions.push_back(vk::KHRDynamicRenderingExtensionName);
+    // required_device_extensions.push_back(vk::KHRDeferredHostOperationsExtensionName);
+    // required_device_extensions.push_back(vk::KHRAccelerationStructureExtensionName);
+    // required_device_extensions.push_back(vk::KHRRayTracingPipelineExtensionName);
 
-    vk::PhysicalDevice adapter = nullptr;
+    vk::raii::PhysicalDevice adapter = nullptr;
 
     auto physical_devices = instance.enumeratePhysicalDevices();
     if (physical_devices.empty()) {
@@ -180,7 +183,7 @@ int main() {
         }
 
         std::set<std::string> missing_device_extension_names;
-        for (const auto &extension_name: required_device_extension_names) {
+        for (const auto &extension_name: required_device_extensions) {
             if (!available_device_extension_names.contains(extension_name)) {
                 missing_device_extension_names.insert(extension_name);
             }
@@ -191,9 +194,9 @@ int main() {
             adapter = physical_device;
             break;
         } else {
-            spdlog::info("    Required device extensions missing: ");
+            spdlog::error("    Required device extensions missing: ");
             for (const auto &extension_name: missing_device_extension_names) {
-                spdlog::info("        - {}", extension_name);
+                spdlog::error("        - {}", extension_name);
             }
         }
 
@@ -203,6 +206,12 @@ int main() {
         spdlog::critical("Failed to find a physical device with support for all required extensions");
     }
     // ................
+
+    VkSurfaceKHR _surface;
+    if (glfwCreateWindowSurface(*instance, window, nullptr, &_surface) != 0) {
+        throw std::runtime_error("Failed to create window surface");
+    }
+    auto surface = vk::raii::SurfaceKHR(instance, _surface);
 
     auto queue_family_properties = adapter.getQueueFamilyProperties();
 
@@ -223,11 +232,11 @@ int main() {
         if (flags & vk::QueueFlagBits::eOpticalFlowNV) flag_names += "OpticalFlowNV | ";
         if (flags & vk::QueueFlagBits::eDataGraphARM) flag_names += "DataGraphARM | ";
 
-        auto surface_support = false;
+        auto present_support = adapter.getSurfaceSupportKHR(i, surface);
 
-        spdlog::info("queue_family_index: {}, queue_count: {}, surface_support: {}, queue_flags: {}", i,
-                     queue_family_property.queueCount, surface_support,
-                     flag_names);
+        spdlog::debug("queue_family_index: {}, queue_count: {}, present_support: {}, queue_flags: {}", i,
+                      queue_family_property.queueCount, present_support,
+                      flag_names);
 
         if (flags & vk::QueueFlagBits::eCompute && !(flags & vk::QueueFlagBits::eGraphics)) {
             queue_family_index = i;
@@ -235,8 +244,79 @@ int main() {
 
         ++i;
     }
+    spdlog::info("Selected queue family {}", queue_family_index);
 
-    // vk::DeviceQueueCreateInfo device_queue_create_info { .queueFamilyIndex = graphicsIndex };
+    // vk::PhysicalDeviceRayTracingPipelineFeaturesKHR ray_tracing_pipeline_features_khr{
+    // .rayTracingPipeline = vk::True
+    // };
+
+    // auto features2 = adapter.getFeatures2();
+
+    // vk::PhysicalDeviceVulkan13Features vulkan13_features;
+    // vulkan13_features.dynamicRendering = vk::True;
+
+    // features2.pNext = &vulkan13_features;
+
+    float queue_priority = 1.0f;
+    vk::DeviceQueueCreateInfo device_queue_create_info{
+        .queueFamilyIndex = static_cast<uint32_t>(queue_family_index),
+        .queueCount = 1,
+        .pQueuePriorities = &queue_priority
+    };
+
+    vk::DeviceCreateInfo device_create_info{
+        // .pNext = &ray_tracing_pipeline_features_khr,
+        .queueCreateInfoCount = 1,
+        .pQueueCreateInfos = &device_queue_create_info,
+        .enabledExtensionCount = static_cast<uint32_t>(required_device_extensions.size()),
+        .ppEnabledExtensionNames = required_device_extensions.data(),
+    };
+
+    auto device = vk::raii::Device(adapter, device_create_info);
+    auto queue = vk::raii::Queue(device, queue_family_index, 0);
+
+    auto surface_capabilities = adapter.getSurfaceCapabilitiesKHR(*surface);
+    auto swapchain_extent = surface_capabilities.currentExtent;
+
+    vk::SurfaceFormatKHR swapchain_surface_format;
+    auto available_formats = adapter.getSurfaceFormatsKHR(*surface);
+    for (const auto &available_format: available_formats) {
+        if (available_format.format == vk::Format::eB8G8R8A8Srgb && available_format.colorSpace ==
+            vk::ColorSpaceKHR::eSrgbNonlinear) {
+            swapchain_surface_format = available_format;
+            break;
+        }
+        swapchain_surface_format = available_formats[0];
+    }
+
+    vk::SwapchainCreateInfoKHR swapchain_create_info{
+        .surface = *surface,
+        .minImageCount = surface_capabilities.minImageCount,
+        .imageFormat = swapchain_surface_format.format,
+        .imageColorSpace = swapchain_surface_format.colorSpace,
+        .imageExtent = swapchain_extent,
+        .imageArrayLayers = 1,
+        .imageUsage = vk::ImageUsageFlagBits::eColorAttachment,
+        .imageSharingMode = vk::SharingMode::eExclusive,
+        .preTransform = surface_capabilities.currentTransform,
+        .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
+        .presentMode = vk::PresentModeKHR::eImmediate,
+        .clipped = true
+    };
+
+    auto swapchain = vk::raii::SwapchainKHR(device, swapchain_create_info);
+    std::vector<vk::Image> swapchain_images = swapchain.getImages();
+
+    vk::ImageViewCreateInfo image_view_create_info{
+        .viewType = vk::ImageViewType::e2D,
+        .format = swapchain_surface_format.format,
+        .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}
+    };
+    std::vector<vk::raii::ImageView> swapchain_image_views;
+    for (auto image: swapchain_images) {
+        image_view_create_info.image = image;
+        swapchain_image_views.emplace_back(device, image_view_create_info);
+    }
 
     // while (!glfwWindowShouldClose(window)) {
     //     glfwPollEvents();
