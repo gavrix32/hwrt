@@ -318,6 +318,13 @@ int main() {
         swapchain_image_views.emplace_back(device, image_view_create_info);
     }
 
+
+
+    // vk::AccelerationStructureGeometryTrianglesDataKHR geometry_data{
+    // .vertexFormat = vk::Format::eR32G32B32Sfloat,
+    // .vertexData
+    // };
+
     // while (!glfwWindowShouldClose(window)) {
     //     glfwPollEvents();
     // }
