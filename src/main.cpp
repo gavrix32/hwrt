@@ -3,6 +3,8 @@
 #define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS 1
 #include <vulkan/vulkan_raii.hpp>
 #include <spdlog/spdlog.h>
+#define VMA_IMPLEMENTATION
+#include <vk_mem_alloc.h>
 
 #define GLFW_INCLUDE_VULKAN
 #include <set>
@@ -54,18 +56,62 @@ std::string_view get_physical_device_type_name(vk::PhysicalDeviceType type) {
     }
 }
 
-int main() {
-#ifdef NDEBUG
-    spdlog::set_level(spdlog::level::warn);
-#else
-    spdlog::set_level(spdlog::level::trace);
-#endif
+struct Vertex {
+    float pos[3];
+    float color[3];
+};
 
-    glfwInit();
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+std::vector<Vertex> vertices = {
+    {{0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
+    {{0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
+    {{-0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+};
 
-    GLFWwindow *window = glfwCreateWindow(800, 600, "HWRT", nullptr, nullptr);
+std::vector<uint32_t> indices = {
+    0, 1, 2,
+};
 
+vk::Extent2D choos_swapchain_extent(GLFWwindow* window, const vk::SurfaceCapabilitiesKHR& capabilities) {
+    if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
+        return capabilities.currentExtent;
+    }
+    int width, height;
+    glfwGetFramebufferSize(window, &width, &height);
+
+    auto min_extent = capabilities.minImageExtent;
+    auto max_extent = capabilities.maxImageExtent;
+
+    return {
+        .width = std::clamp<uint32_t>(width, min_extent.width, max_extent.width),
+        .height = std::clamp<uint32_t>(height, min_extent.height, max_extent.height),
+    };
+}
+
+vk::Buffer create_buffer(VmaAllocator allocator,
+                         vk::DeviceSize size, vk::BufferUsageFlags usage,
+                         VmaAllocation &allocation, VmaAllocationCreateFlags allocation_create_flags = 0) {
+    vk::BufferCreateInfo buffer_create_info = {
+        .size = size,
+        .usage = usage,
+    };
+
+    VmaAllocationCreateInfo allocation_create_info = {
+        .flags = allocation_create_flags,
+        .usage = VMA_MEMORY_USAGE_AUTO,
+    };
+
+    VkBuffer buffer;
+    auto result = vmaCreateBuffer(allocator, buffer_create_info, &allocation_create_info, &buffer, &allocation,
+                                  nullptr);
+
+    if (result != VK_SUCCESS) {
+        spdlog::error("vmaCreateBuffer failed");
+    }
+
+    return buffer;
+}
+
+void init_vulkan(GLFWwindow* window) {
     const vk::raii::Context context;
 
     // Check layers
@@ -156,6 +202,7 @@ int main() {
     }
 
     std::vector<const char *> required_device_extensions;
+    required_device_extensions.push_back(vk::KHRSwapchainExtensionName);
     // required_device_extensions.push_back(vk::KHRDynamicRenderingExtensionName);
     // required_device_extensions.push_back(vk::KHRDeferredHostOperationsExtensionName);
     // required_device_extensions.push_back(vk::KHRAccelerationStructureExtensionName);
@@ -276,7 +323,7 @@ int main() {
     auto queue = vk::raii::Queue(device, queue_family_index, 0);
 
     auto surface_capabilities = adapter.getSurfaceCapabilitiesKHR(*surface);
-    auto swapchain_extent = surface_capabilities.currentExtent;
+    auto swapchain_extent = choos_swapchain_extent(window, surface_capabilities);
 
     vk::SurfaceFormatKHR swapchain_surface_format;
     auto available_formats = adapter.getSurfaceFormatsKHR(*surface);
@@ -318,12 +365,58 @@ int main() {
         swapchain_image_views.emplace_back(device, image_view_create_info);
     }
 
+    // VmaAllocator allocator_create_nfo = {
+    //     .instance = instance,
+    //     .physicalDevice = adapter,
+    //     .device = device,
+    // };
+    //
+    // VmaAllocation vertexAllocation, indexAllocation;
+
+    // vk::Buffer vertex_buffer = create_buffer(
+    //     allocator_create_nfo,
+    //     sizeof(Vertex) * vertices.size(),
+    //     vk::BufferUsageFlagBits:eVertex
+    //     | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+    //     | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+    //     vertexAllocation,
+    //     VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+    //       | VMA_ALLOCATION_CREATE_MAPPED_BIT
+    // );
+    //
+    // VkBuffer indexBuffer = create_buffer(
+    //     allocator_create_nfo,
+    //     sizeof(uint32_t) * indices.size(),
+    //     VK_BUFFER_USAGE_INDEX_BUFFER_BIT
+    //     | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+    //     | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+    //     indexAllocation,
+    //     VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+    //       | VMA_ALLOCATION_CREATE_MAPPED_BIT
+    // );
 
 
     // vk::AccelerationStructureGeometryTrianglesDataKHR geometry_data{
     // .vertexFormat = vk::Format::eR32G32B32Sfloat,
     // .vertexData
     // };
+}
+
+int main() {
+#ifdef NDEBUG
+    spdlog::set_level(spdlog::level::warn);
+#else
+    spdlog::set_level(spdlog::level::trace);
+#endif
+
+    glfwInit();
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+    GLFWwindow *window = glfwCreateWindow(800, 600, "HWRT", nullptr, nullptr);
+
+    {
+        init_vulkan(window);
+    }
 
     // while (!glfwWindowShouldClose(window)) {
     //     glfwPollEvents();
