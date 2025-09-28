@@ -37,8 +37,8 @@ static std::string_view message_type_to_string(vk::DebugUtilsMessageTypeFlagsEXT
     return "UNKNOWN";
 }
 
-static VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
-                                                       vk::DebugUtilsMessageTypeFlagsEXT type,
+static VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(const vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
+                                                       const vk::DebugUtilsMessageTypeFlagsEXT type,
                                                        const vk::DebugUtilsMessengerCallbackDataEXT *p_callback_data,
                                                        void *) {
     spdlog::log(to_spdlog_level(severity), "[Vulkan {}] {}", message_type_to_string(type), p_callback_data->pMessage);
@@ -46,7 +46,7 @@ static VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(vk::DebugUtilsMessageSeve
     return vk::False;
 }
 
-std::string_view get_physical_device_type_name(vk::PhysicalDeviceType type) {
+std::string_view get_physical_device_type_name(const vk::PhysicalDeviceType type) {
     switch (type) {
         case vk::PhysicalDeviceType::eDiscreteGpu: return "discrete";
         case vk::PhysicalDeviceType::eIntegratedGpu: return "integrated";
@@ -71,7 +71,7 @@ std::vector<uint32_t> indices = {
     0, 1, 2,
 };
 
-vk::Extent2D choos_swapchain_extent(GLFWwindow* window, const vk::SurfaceCapabilitiesKHR& capabilities) {
+vk::Extent2D choose_swapchain_extent(GLFWwindow *window, const vk::SurfaceCapabilitiesKHR &capabilities) {
     if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
         return capabilities.currentExtent;
     }
@@ -90,19 +90,19 @@ vk::Extent2D choos_swapchain_extent(GLFWwindow* window, const vk::SurfaceCapabil
 vk::Buffer create_buffer(VmaAllocator allocator,
                          vk::DeviceSize size, vk::BufferUsageFlags usage,
                          VmaAllocation &allocation, VmaAllocationCreateFlags allocation_create_flags = 0) {
-    vk::BufferCreateInfo buffer_create_info = {
+    const vk::BufferCreateInfo buffer_create_info = {
         .size = size,
         .usage = usage,
     };
 
-    VmaAllocationCreateInfo allocation_create_info = {
+    const VmaAllocationCreateInfo allocation_create_info = {
         .flags = allocation_create_flags,
         .usage = VMA_MEMORY_USAGE_AUTO,
     };
 
     VkBuffer buffer;
-    auto result = vmaCreateBuffer(allocator, buffer_create_info, &allocation_create_info, &buffer, &allocation,
-                                  nullptr);
+    const auto result = vmaCreateBuffer(allocator, buffer_create_info, &allocation_create_info, &buffer, &allocation,
+                                        nullptr);
 
     if (result != VK_SUCCESS) {
         spdlog::error("vmaCreateBuffer failed");
@@ -111,7 +111,7 @@ vk::Buffer create_buffer(VmaAllocator allocator,
     return buffer;
 }
 
-void init_vulkan(GLFWwindow* window) {
+void init_vulkan(GLFWwindow *window) {
     const vk::raii::Context context;
 
     // Check layers
@@ -203,6 +203,7 @@ void init_vulkan(GLFWwindow* window) {
 
     std::vector<const char *> required_device_extensions;
     required_device_extensions.push_back(vk::KHRSwapchainExtensionName);
+    // required_device_extensions.push_back(vk::KHRBufferDeviceAddressExtensionName);
     // required_device_extensions.push_back(vk::KHRDynamicRenderingExtensionName);
     // required_device_extensions.push_back(vk::KHRDeferredHostOperationsExtensionName);
     // required_device_extensions.push_back(vk::KHRAccelerationStructureExtensionName);
@@ -293,6 +294,10 @@ void init_vulkan(GLFWwindow* window) {
     }
     spdlog::info("Selected queue family {}", queue_family_index);
 
+    vk::PhysicalDeviceBufferDeviceAddressFeatures buffer_device_address_features{
+        .bufferDeviceAddress = vk::True
+    };
+
     // vk::PhysicalDeviceRayTracingPipelineFeaturesKHR ray_tracing_pipeline_features_khr{
     // .rayTracingPipeline = vk::True
     // };
@@ -312,7 +317,7 @@ void init_vulkan(GLFWwindow* window) {
     };
 
     vk::DeviceCreateInfo device_create_info{
-        // .pNext = &ray_tracing_pipeline_features_khr,
+        .pNext = &buffer_device_address_features,
         .queueCreateInfoCount = 1,
         .pQueueCreateInfos = &device_queue_create_info,
         .enabledExtensionCount = static_cast<uint32_t>(required_device_extensions.size()),
@@ -323,7 +328,7 @@ void init_vulkan(GLFWwindow* window) {
     auto queue = vk::raii::Queue(device, queue_family_index, 0);
 
     auto surface_capabilities = adapter.getSurfaceCapabilitiesKHR(*surface);
-    auto swapchain_extent = choos_swapchain_extent(window, surface_capabilities);
+    auto swapchain_extent = choose_swapchain_extent(window, surface_capabilities);
 
     vk::SurfaceFormatKHR swapchain_surface_format;
     auto available_formats = adapter.getSurfaceFormatsKHR(*surface);
@@ -365,41 +370,64 @@ void init_vulkan(GLFWwindow* window) {
         swapchain_image_views.emplace_back(device, image_view_create_info);
     }
 
-    // VmaAllocator allocator_create_nfo = {
-    //     .instance = instance,
-    //     .physicalDevice = adapter,
-    //     .device = device,
-    // };
-    //
-    // VmaAllocation vertexAllocation, indexAllocation;
+    VmaAllocatorCreateInfo allocator_create_info = {
+        .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+        .physicalDevice = static_cast<vk::PhysicalDevice>(adapter),
+        .device = static_cast<vk::Device>(device),
+        .instance = static_cast<vk::Instance>(instance),
+    };
 
-    // vk::Buffer vertex_buffer = create_buffer(
-    //     allocator_create_nfo,
-    //     sizeof(Vertex) * vertices.size(),
-    //     vk::BufferUsageFlagBits:eVertex
-    //     | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
-    //     | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-    //     vertexAllocation,
-    //     VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
-    //       | VMA_ALLOCATION_CREATE_MAPPED_BIT
-    // );
-    //
-    // VkBuffer indexBuffer = create_buffer(
-    //     allocator_create_nfo,
-    //     sizeof(uint32_t) * indices.size(),
-    //     VK_BUFFER_USAGE_INDEX_BUFFER_BIT
-    //     | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
-    //     | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-    //     indexAllocation,
-    //     VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
-    //       | VMA_ALLOCATION_CREATE_MAPPED_BIT
-    // );
+    VmaAllocator allocator;
 
+    if (vmaCreateAllocator(&allocator_create_info, &allocator) != VK_SUCCESS) {
+        spdlog::error("Failed to create allocator");
+    }
+
+    VmaAllocation vertex_allocation, index_allocation;
+
+    vk::Buffer vertex_buffer = create_buffer(
+        allocator,
+        sizeof(Vertex) * vertices.size(),
+        vk::BufferUsageFlagBits::eVertexBuffer
+        | vk::BufferUsageFlagBits::eStorageBuffer
+        | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+        vertex_allocation,
+        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+        | VMA_ALLOCATION_CREATE_MAPPED_BIT
+    );
+
+    VkBuffer index_buffer = create_buffer(
+        allocator,
+        sizeof(uint32_t) * indices.size(),
+        vk::BufferUsageFlagBits::eIndexBuffer
+        | vk::BufferUsageFlagBits::eStorageBuffer
+        | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+        index_allocation,
+        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+        | VMA_ALLOCATION_CREATE_MAPPED_BIT
+    );
+
+    vk::BufferDeviceAddressInfo vertex_buffer_address_info{
+        .buffer = vertex_buffer,
+    };
+    vk::DeviceAddress vertex_address = device.getBufferAddress(vertex_buffer_address_info);
+    spdlog::info("0x{:016X}", vertex_address);
+
+    vk::BufferDeviceAddressInfo index_buffer_address_info{
+        .buffer = index_buffer,
+    };
+    vk::DeviceAddress index_address = device.getBufferAddress(index_buffer_address_info);
+    spdlog::info("0x{:016X}", index_address);
 
     // vk::AccelerationStructureGeometryTrianglesDataKHR geometry_data{
-    // .vertexFormat = vk::Format::eR32G32B32Sfloat,
-    // .vertexData
+    //     .vertexFormat = vk::Format::eR32G32B32Sfloat,
+    //     .vertexData.deviceAddress = vertex_address,
+    //
     // };
+
+    vmaDestroyBuffer(allocator, vertex_buffer, vertex_allocation);
+    vmaDestroyBuffer(allocator, index_buffer, index_allocation);
+    vmaDestroyAllocator(allocator);
 }
 
 int main() {
@@ -415,6 +443,7 @@ int main() {
     GLFWwindow *window = glfwCreateWindow(800, 600, "HWRT", nullptr, nullptr);
 
     {
+        // Need for cleanup Vulkan RAII objects before GLFW
         init_vulkan(window);
     }
 
