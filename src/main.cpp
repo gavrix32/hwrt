@@ -411,19 +411,53 @@ void init_vulkan(GLFWwindow *window) {
         .buffer = vertex_buffer,
     };
     vk::DeviceAddress vertex_address = device.getBufferAddress(vertex_buffer_address_info);
-    spdlog::info("0x{:016X}", vertex_address);
 
     vk::BufferDeviceAddressInfo index_buffer_address_info{
         .buffer = index_buffer,
     };
     vk::DeviceAddress index_address = device.getBufferAddress(index_buffer_address_info);
-    spdlog::info("0x{:016X}", index_address);
 
-    // vk::AccelerationStructureGeometryTrianglesDataKHR geometry_data{
-    //     .vertexFormat = vk::Format::eR32G32B32Sfloat,
-    //     .vertexData.deviceAddress = vertex_address,
-    //
+    vk::AccelerationStructureGeometryTrianglesDataKHR geometry_data{
+        .vertexFormat = vk::Format::eR32G32B32Sfloat,
+        .vertexData = vertex_address,
+        .vertexStride = sizeof(Vertex),
+        .maxVertex = static_cast<uint32_t>(vertices.size() - 1),
+        .indexType = vk::IndexType::eUint32,
+        .indexData = index_address,
+    };
+
+    vk::AccelerationStructureGeometryKHR geometry{
+        .geometryType = vk::GeometryTypeKHR::eTriangles,
+        .geometry = geometry_data,
+        .flags = vk::GeometryFlagBitsKHR::eOpaque,
+    };
+
+    vk::AccelerationStructureBuildRangeInfoKHR build_range_info{
+        .primitiveCount = static_cast<uint32_t>(indices.size() / 3),
+        .primitiveOffset = 0,
+        .firstVertex = 0,
+        .transformOffset = 0,
+    };
+
+    vk::CommandPoolCreateInfo command_pool_create_info{
+        .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+        .queueFamilyIndex = static_cast<uint32_t>(queue_family_index),
+    };
+    auto command_pool = vk::raii::CommandPool(device, command_pool_create_info);
+
+    vk::CommandBufferAllocateInfo command_buffer_allocate_info{
+        .commandPool = command_pool,
+        .level = vk::CommandBufferLevel::ePrimary,
+        .commandBufferCount = 1,
+    };
+    auto command_buffers = vk::raii::CommandBuffers(device, command_buffer_allocate_info);
+    auto command_buffer = std::move(command_buffers.front());
+
+    // vk::AccelerationStructureBuildGeometryInfoKHR AS_build_geometry_info{
     // };
+
+    // device.getAccelerationStructureBuildSizesKHR(vk::AccelerationStructureBuildTypeKHR::eDevice, )
+
 
     vmaDestroyBuffer(allocator, vertex_buffer, vertex_allocation);
     vmaDestroyBuffer(allocator, index_buffer, index_allocation);
