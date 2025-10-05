@@ -203,10 +203,9 @@ void init_vulkan(GLFWwindow *window) {
 
     std::vector<const char *> required_device_extensions;
     required_device_extensions.push_back(vk::KHRSwapchainExtensionName);
-    // required_device_extensions.push_back(vk::KHRBufferDeviceAddressExtensionName);
+    required_device_extensions.push_back(vk::KHRDeferredHostOperationsExtensionName);
+    required_device_extensions.push_back(vk::KHRAccelerationStructureExtensionName);
     // required_device_extensions.push_back(vk::KHRDynamicRenderingExtensionName);
-    // required_device_extensions.push_back(vk::KHRDeferredHostOperationsExtensionName);
-    // required_device_extensions.push_back(vk::KHRAccelerationStructureExtensionName);
     // required_device_extensions.push_back(vk::KHRRayTracingPipelineExtensionName);
 
     vk::raii::PhysicalDevice adapter = nullptr;
@@ -298,6 +297,11 @@ void init_vulkan(GLFWwindow *window) {
         .bufferDeviceAddress = vk::True
     };
 
+    vk::PhysicalDeviceAccelerationStructureFeaturesKHR acceleration_structure_features{
+        .pNext = buffer_device_address_features,
+        .accelerationStructure = vk::True
+    };
+
     // vk::PhysicalDeviceRayTracingPipelineFeaturesKHR ray_tracing_pipeline_features_khr{
     // .rayTracingPipeline = vk::True
     // };
@@ -317,7 +321,7 @@ void init_vulkan(GLFWwindow *window) {
     };
 
     vk::DeviceCreateInfo device_create_info{
-        .pNext = &buffer_device_address_features,
+        .pNext = &acceleration_structure_features,
         .queueCreateInfoCount = 1,
         .pQueueCreateInfos = &device_queue_create_info,
         .enabledExtensionCount = static_cast<uint32_t>(required_device_extensions.size()),
@@ -390,22 +394,36 @@ void init_vulkan(GLFWwindow *window) {
         sizeof(Vertex) * vertices.size(),
         vk::BufferUsageFlagBits::eVertexBuffer
         | vk::BufferUsageFlagBits::eStorageBuffer
-        | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+        | vk::BufferUsageFlagBits::eShaderDeviceAddress
+        | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR,
         vertex_allocation,
         VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
         | VMA_ALLOCATION_CREATE_MAPPED_BIT
     );
 
-    VkBuffer index_buffer = create_buffer(
+    vk::Buffer index_buffer = create_buffer(
         allocator,
         sizeof(uint32_t) * indices.size(),
         vk::BufferUsageFlagBits::eIndexBuffer
         | vk::BufferUsageFlagBits::eStorageBuffer
-        | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+        | vk::BufferUsageFlagBits::eShaderDeviceAddress
+        | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR,
         index_allocation,
         VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
         | VMA_ALLOCATION_CREATE_MAPPED_BIT
     );
+
+    {
+        VmaAllocationInfo allocation_info;
+        vmaGetAllocationInfo(allocator, vertex_allocation, &allocation_info);
+        memcpy(allocation_info.pMappedData, vertices.data(), sizeof(Vertex) * vertices.size());
+    }
+
+    {
+        VmaAllocationInfo allocation_info;
+        vmaGetAllocationInfo(allocator, index_allocation, &allocation_info);
+        memcpy(allocation_info.pMappedData, indices.data(), sizeof(u_int32_t) * indices.size());
+    }
 
     vk::BufferDeviceAddressInfo vertex_buffer_address_info{
         .buffer = vertex_buffer,
@@ -417,7 +435,11 @@ void init_vulkan(GLFWwindow *window) {
     };
     vk::DeviceAddress index_address = device.getBufferAddress(index_buffer_address_info);
 
-    vk::AccelerationStructureGeometryTrianglesDataKHR geometry_data{
+    // Acceleration Structure Info
+
+    auto triangle_count = static_cast<uint32_t>(indices.size() / 3);
+
+    vk::AccelerationStructureGeometryTrianglesDataKHR AS_geometry_triangles_data{
         .vertexFormat = vk::Format::eR32G32B32Sfloat,
         .vertexData = vertex_address,
         .vertexStride = sizeof(Vertex),
@@ -426,18 +448,69 @@ void init_vulkan(GLFWwindow *window) {
         .indexData = index_address,
     };
 
-    vk::AccelerationStructureGeometryKHR geometry{
+    vk::AccelerationStructureGeometryKHR AS_geometry{
         .geometryType = vk::GeometryTypeKHR::eTriangles,
-        .geometry = geometry_data,
+        .geometry = AS_geometry_triangles_data,
         .flags = vk::GeometryFlagBitsKHR::eOpaque,
     };
 
-    vk::AccelerationStructureBuildRangeInfoKHR build_range_info{
-        .primitiveCount = static_cast<uint32_t>(indices.size() / 3),
+    vk::AccelerationStructureBuildRangeInfoKHR AS_build_range_info{
+        .primitiveCount = triangle_count,
         .primitiveOffset = 0,
         .firstVertex = 0,
         .transformOffset = 0,
     };
+
+    auto AS_type = vk::AccelerationStructureTypeKHR::eBottomLevel;
+
+    vk::AccelerationStructureBuildGeometryInfoKHR AS_build_geometry_info{
+        .type = AS_type,
+        .mode = vk::BuildAccelerationStructureModeKHR::eBuild,
+        .geometryCount = 1,
+        .pGeometries = &AS_geometry,
+    };
+
+    std::vector<uint32_t> max_primitive_counts(1);
+    max_primitive_counts[0] = AS_build_range_info.primitiveCount;
+
+    auto AS_build_sizes_info = device.getAccelerationStructureBuildSizesKHR(
+        vk::AccelerationStructureBuildTypeKHR::eDevice, AS_build_geometry_info,
+        max_primitive_counts);
+
+    VmaAllocation scratch_allocation;
+
+    auto scratch_buffer = create_buffer(
+        allocator,
+        AS_build_sizes_info.buildScratchSize,
+        vk::BufferUsageFlagBits::eStorageBuffer
+        | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+        scratch_allocation,
+        0
+    );
+
+    vk::BufferDeviceAddressInfo scratch_buffer_address_info{
+        .buffer = scratch_buffer,
+    };
+    auto scratch_address = device.getBufferAddress(scratch_buffer_address_info);
+
+    VmaAllocation AS_allocation;
+
+    auto AS_buffer = create_buffer(
+        allocator,
+        AS_build_sizes_info.accelerationStructureSize,
+        vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR
+        | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+        AS_allocation,
+        0
+    );
+
+    vk::AccelerationStructureCreateInfoKHR AS_create_info{
+        .buffer = AS_buffer,
+        .size = AS_build_sizes_info.accelerationStructureSize,
+        .type = AS_type,
+    };
+
+    // Build Acceleration Structure
 
     vk::CommandPoolCreateInfo command_pool_create_info{
         .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
@@ -453,12 +526,22 @@ void init_vulkan(GLFWwindow *window) {
     auto command_buffers = vk::raii::CommandBuffers(device, command_buffer_allocate_info);
     auto command_buffer = std::move(command_buffers.front());
 
-    // vk::AccelerationStructureBuildGeometryInfoKHR AS_build_geometry_info{
-    // };
+    vk::CommandBufferBeginInfo begin_info{
+        .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit
+    };
+    command_buffer.begin(begin_info);
 
-    // device.getAccelerationStructureBuildSizesKHR(vk::AccelerationStructureBuildTypeKHR::eDevice, )
+    vk::raii::AccelerationStructureKHR acceleration_structure(device, AS_create_info);
 
+    AS_build_geometry_info.dstAccelerationStructure = acceleration_structure;
+    AS_build_geometry_info.scratchData = scratch_address;
 
+    command_buffer.buildAccelerationStructuresKHR({AS_build_geometry_info}, {&AS_build_range_info});
+
+    command_buffer.end();
+
+    vmaDestroyBuffer(allocator, AS_buffer, AS_allocation);
+    vmaDestroyBuffer(allocator, scratch_buffer, scratch_allocation);
     vmaDestroyBuffer(allocator, vertex_buffer, vertex_allocation);
     vmaDestroyBuffer(allocator, index_buffer, index_allocation);
     vmaDestroyAllocator(allocator);
