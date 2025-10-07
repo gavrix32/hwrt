@@ -142,6 +142,68 @@ vk::Image create_image(vk::ImageCreateInfo image_create_info, VmaAllocator alloc
     return image;
 }
 
+void layout_transition(vk::raii::CommandBuffer &cmd, vk::Image image,
+                       vk::ImageLayout old_layout, vk::ImageLayout new_layout) {
+    vk::AccessFlags2 srcAccessMask;
+    vk::AccessFlags2 dstAccessMask;
+    vk::PipelineStageFlags2 srcStageMask;
+    vk::PipelineStageFlags2 dstStageMask;
+
+    if (old_layout == vk::ImageLayout::eUndefined &&
+        new_layout == vk::ImageLayout::eTransferDstOptimal) {
+        srcAccessMask = vk::AccessFlagBits2::eNone;
+        dstAccessMask = vk::AccessFlagBits2::eTransferWrite;
+        srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe;
+        dstStageMask = vk::PipelineStageFlagBits2::eTransfer;
+    } else if (old_layout == vk::ImageLayout::eUndefined &&
+               new_layout == vk::ImageLayout::eTransferSrcOptimal) {
+        srcAccessMask = vk::AccessFlagBits2::eNone;
+        dstAccessMask = vk::AccessFlagBits2::eTransferRead;
+        srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe;
+        dstStageMask = vk::PipelineStageFlagBits2::eTransfer;
+    } else if (old_layout == vk::ImageLayout::eTransferDstOptimal &&
+               new_layout == vk::ImageLayout::eShaderReadOnlyOptimal) {
+        srcAccessMask = vk::AccessFlagBits2::eTransferWrite;
+        dstAccessMask = vk::AccessFlagBits2::eShaderRead;
+        srcStageMask = vk::PipelineStageFlagBits2::eTransfer;
+        dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader;
+    } else if (old_layout == vk::ImageLayout::eUndefined &&
+               new_layout == vk::ImageLayout::eGeneral) {
+        srcAccessMask = vk::AccessFlagBits2::eNone;
+        dstAccessMask = vk::AccessFlagBits2::eShaderWrite;
+        srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe;
+        dstStageMask = vk::PipelineStageFlagBits2::eComputeShader;
+    } else {
+        spdlog::error("Unsupported layout transition");
+    }
+
+    vk::ImageMemoryBarrier2 barrier{
+        .srcStageMask = srcStageMask,
+        .srcAccessMask = srcAccessMask,
+        .dstStageMask = dstStageMask,
+        .dstAccessMask = dstAccessMask,
+        .oldLayout = old_layout,
+        .newLayout = new_layout,
+        .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
+        .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
+        .image = image,
+        .subresourceRange = {
+            .aspectMask = vk::ImageAspectFlagBits::eColor,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        }
+    };
+
+    vk::DependencyInfo dependency_info{
+        .imageMemoryBarrierCount = 1,
+        .pImageMemoryBarriers = &barrier
+    };
+
+    cmd.pipelineBarrier2(dependency_info);
+}
+
 void init_vulkan(GLFWwindow *window) {
     const vk::raii::Context context;
 
@@ -189,7 +251,7 @@ void init_vulkan(GLFWwindow *window) {
         }
         if (!found) {
             throw std::runtime_error(
-                "Required GLFW extension not supported: " + std::string(extension));
+                "Required extension not supported: " + std::string(extension));
         }
     }
 
@@ -292,6 +354,8 @@ void init_vulkan(GLFWwindow *window) {
     }
     auto surface = vk::raii::SurfaceKHR(instance, _surface);
 
+    // Device & Queue
+
     auto queue_family_properties = adapter.getQueueFamilyProperties();
 
     size_t queue_family_index = 0;
@@ -340,7 +404,10 @@ void init_vulkan(GLFWwindow *window) {
 
     // auto features2 = adapter.getFeatures2();
 
-    // vk::PhysicalDeviceVulkan13Features vulkan13_features;
+    vk::PhysicalDeviceVulkan13Features vulkan13_features{
+        .pNext = acceleration_structure_features,
+        .synchronization2 = vk::True,
+    };
     // vulkan13_features.dynamicRendering = vk::True;
 
     // features2.pNext = &vulkan13_features;
@@ -353,7 +420,7 @@ void init_vulkan(GLFWwindow *window) {
     };
 
     vk::DeviceCreateInfo device_create_info{
-        .pNext = &acceleration_structure_features,
+        .pNext = &vulkan13_features,
         .queueCreateInfoCount = 1,
         .pQueueCreateInfos = &device_queue_create_info,
         .enabledExtensionCount = static_cast<uint32_t>(required_device_extensions.size()),
@@ -563,7 +630,7 @@ void init_vulkan(GLFWwindow *window) {
     };
     command_buffer.begin(begin_info);
 
-    vk::raii::AccelerationStructureKHR AS(device, AS_create_info);
+    auto AS = device.createAccelerationStructureKHR(AS_create_info);
 
     AS_build_geometry_info.dstAccelerationStructure = AS;
     AS_build_geometry_info.scratchData = scratch_address;
@@ -604,6 +671,9 @@ void init_vulkan(GLFWwindow *window) {
         .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
     };
     auto ray_trace_image_view = device.createImageView(ray_trace_image_view_create_info);
+
+    layout_transition(command_buffer, ray_trace_image, vk::ImageLayout::eUndefined,
+                      vk::ImageLayout::eTransferSrcOptimal);
 
     // Push Descriptors
 
@@ -662,6 +732,8 @@ void init_vulkan(GLFWwindow *window) {
     std::vector<vk::WriteDescriptorSet> writes{write_AS, write_image};
 
     // command_buffer.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, /* TODO: layout */, 0, writes);
+
+    // Ray Tracing Pipeline
 
     command_buffer.end();
 
