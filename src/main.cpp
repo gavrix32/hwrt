@@ -87,6 +87,19 @@ vk::Extent2D choose_swapchain_extent(GLFWwindow *window, const vk::SurfaceCapabi
     };
 }
 
+vk::Format sRGB_to_UNorm(vk::Format format) {
+    switch (format) {
+        case vk::Format::eR8Srgb: return vk::Format::eR8Unorm;
+        case vk::Format::eR8G8Srgb: return vk::Format::eR8G8Unorm;
+        case vk::Format::eR8G8B8Srgb: return vk::Format::eR8G8B8Unorm;
+        case vk::Format::eB8G8R8Srgb: return vk::Format::eB8G8R8Unorm;
+        case vk::Format::eR8G8B8A8Srgb: return vk::Format::eR8G8B8A8Unorm;
+        case vk::Format::eB8G8R8A8Srgb: return vk::Format::eB8G8R8A8Unorm;
+
+        default: return format;
+    }
+}
+
 vk::Buffer create_buffer(VmaAllocator allocator,
                          vk::DeviceSize size, vk::BufferUsageFlags usage,
                          VmaAllocation &allocation, VmaAllocationCreateFlags allocation_create_flags = 0) {
@@ -105,10 +118,28 @@ vk::Buffer create_buffer(VmaAllocator allocator,
                                         nullptr);
 
     if (result != VK_SUCCESS) {
-        spdlog::error("vmaCreateBuffer failed");
+        spdlog::error("vmaCreateBuffer failed: {}", vk::to_string(static_cast<vk::Result>(result)));
     }
 
     return buffer;
+}
+
+vk::Image create_image(vk::ImageCreateInfo image_create_info, VmaAllocator allocator, VmaAllocation &allocation,
+                       VmaAllocationCreateFlags allocation_create_flags = 0) {
+    const VmaAllocationCreateInfo allocation_create_info = {
+        .flags = allocation_create_flags,
+        .usage = VMA_MEMORY_USAGE_AUTO,
+    };
+
+    VkImage image;
+    const auto result = vmaCreateImage(allocator, image_create_info, &allocation_create_info, &image, &allocation,
+                                       nullptr);
+
+    if (result != VK_SUCCESS) {
+        spdlog::error("vmaCreateImage failed: {}", vk::to_string(static_cast<vk::Result>(result)));
+    }
+
+    return image;
 }
 
 void init_vulkan(GLFWwindow *window) {
@@ -252,7 +283,8 @@ void init_vulkan(GLFWwindow *window) {
     if (adapter == nullptr) {
         spdlog::critical("Failed to find a physical device with support for all required extensions");
     }
-    // ................
+
+    // Surface
 
     VkSurfaceKHR _surface;
     if (glfwCreateWindowSurface(*instance, window, nullptr, &_surface) != 0) {
@@ -331,6 +363,8 @@ void init_vulkan(GLFWwindow *window) {
     auto device = vk::raii::Device(adapter, device_create_info);
     auto queue = vk::raii::Queue(device, queue_family_index, 0);
 
+    // Swapchain
+
     auto surface_capabilities = adapter.getSurfaceCapabilitiesKHR(*surface);
     auto swapchain_extent = choose_swapchain_extent(window, surface_capabilities);
 
@@ -352,7 +386,7 @@ void init_vulkan(GLFWwindow *window) {
         .imageColorSpace = swapchain_surface_format.colorSpace,
         .imageExtent = swapchain_extent,
         .imageArrayLayers = 1,
-        .imageUsage = vk::ImageUsageFlagBits::eColorAttachment,
+        .imageUsage = vk::ImageUsageFlagBits::eTransferDst,
         .imageSharingMode = vk::SharingMode::eExclusive,
         .preTransform = surface_capabilities.currentTransform,
         .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
@@ -363,16 +397,16 @@ void init_vulkan(GLFWwindow *window) {
     auto swapchain = vk::raii::SwapchainKHR(device, swapchain_create_info);
     std::vector<vk::Image> swapchain_images = swapchain.getImages();
 
-    vk::ImageViewCreateInfo image_view_create_info{
-        .viewType = vk::ImageViewType::e2D,
-        .format = swapchain_surface_format.format,
-        .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}
-    };
-    std::vector<vk::raii::ImageView> swapchain_image_views;
-    for (auto image: swapchain_images) {
-        image_view_create_info.image = image;
-        swapchain_image_views.emplace_back(device, image_view_create_info);
-    }
+    // vk::ImageViewCreateInfo image_view_create_info{
+    //     .viewType = vk::ImageViewType::e2D,
+    //     .format = swapchain_surface_format.format,
+    //     .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}
+    // };
+    // std::vector<vk::raii::ImageView> swapchain_image_views;
+    // for (auto image: swapchain_images) {
+    //     image_view_create_info.image = image;
+    //     swapchain_image_views.emplace_back(device, image_view_create_info);
+    // }
 
     VmaAllocatorCreateInfo allocator_create_info = {
         .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
@@ -435,7 +469,7 @@ void init_vulkan(GLFWwindow *window) {
     };
     vk::DeviceAddress index_address = device.getBufferAddress(index_buffer_address_info);
 
-    // Acceleration Structure Info
+    // Acceleration Structure
 
     auto triangle_count = static_cast<uint32_t>(indices.size() / 3);
 
@@ -510,8 +544,6 @@ void init_vulkan(GLFWwindow *window) {
         .type = AS_type,
     };
 
-    // Build Acceleration Structure
-
     vk::CommandPoolCreateInfo command_pool_create_info{
         .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
         .queueFamilyIndex = static_cast<uint32_t>(queue_family_index),
@@ -531,15 +563,109 @@ void init_vulkan(GLFWwindow *window) {
     };
     command_buffer.begin(begin_info);
 
-    vk::raii::AccelerationStructureKHR acceleration_structure(device, AS_create_info);
+    vk::raii::AccelerationStructureKHR AS(device, AS_create_info);
 
-    AS_build_geometry_info.dstAccelerationStructure = acceleration_structure;
+    AS_build_geometry_info.dstAccelerationStructure = AS;
     AS_build_geometry_info.scratchData = scratch_address;
 
     command_buffer.buildAccelerationStructuresKHR({AS_build_geometry_info}, {&AS_build_range_info});
 
+    // Ray Trace Image
+
+    auto queue_family_index_u32 = static_cast<uint32_t>(queue_family_index);
+
+    vk::ImageCreateInfo ray_trace_image_create_info{
+        .imageType = vk::ImageType::e2D,
+        .format = sRGB_to_UNorm(swapchain_surface_format.format),
+        .extent = vk::Extent3D{
+            swapchain_extent.width,
+            swapchain_extent.height,
+            1
+        },
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = vk::SampleCountFlagBits::e1,
+        .tiling = vk::ImageTiling::eOptimal,
+        .usage = vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc,
+        .sharingMode = vk::SharingMode::eExclusive,
+        .queueFamilyIndexCount = 1,
+        .pQueueFamilyIndices = &queue_family_index_u32,
+        .initialLayout = vk::ImageLayout::eUndefined,
+    };
+
+    VmaAllocation ray_trace_image_allocation;
+
+    auto ray_trace_image = create_image(ray_trace_image_create_info, allocator, ray_trace_image_allocation);
+
+    vk::ImageViewCreateInfo ray_trace_image_view_create_info{
+        .image = ray_trace_image,
+        .viewType = vk::ImageViewType::e2D,
+        .format = sRGB_to_UNorm(swapchain_surface_format.format),
+        .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
+    };
+    auto ray_trace_image_view = device.createImageView(ray_trace_image_view_create_info);
+
+    // Push Descriptors
+
+    std::vector<vk::DescriptorSetLayoutBinding> bindings;
+
+    bindings.push_back(
+        vk::DescriptorSetLayoutBinding{
+            .binding = 0,
+            .descriptorType = vk::DescriptorType::eAccelerationStructureKHR,
+            .descriptorCount = 1,
+            .stageFlags = vk::ShaderStageFlagBits::eAll,
+        }
+    );
+
+    bindings.push_back(
+        vk::DescriptorSetLayoutBinding{
+            .binding = 1,
+            .descriptorType = vk::DescriptorType::eStorageImage,
+            .descriptorCount = 1,
+            .stageFlags = vk::ShaderStageFlagBits::eAll,
+        }
+    );
+
+    vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_create_info{
+        .flags = vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptor,
+        .bindingCount = static_cast<uint32_t>(bindings.size()),
+        .pBindings = bindings.data(),
+    };
+
+    auto descriptor_set_layout = device.createDescriptorSetLayout(descriptor_set_layout_create_info);
+
+    vk::WriteDescriptorSetAccelerationStructureKHR write_AS_info{
+        .accelerationStructureCount = 1,
+        .pAccelerationStructures = &*AS,
+    };
+
+    vk::WriteDescriptorSet write_AS{
+        .pNext = &write_AS_info,
+        .dstBinding = 0,
+        .descriptorCount = 1,
+        .descriptorType = vk::DescriptorType::eAccelerationStructureKHR,
+    };
+
+    vk::DescriptorImageInfo descriptor_image_info{
+        .imageView = ray_trace_image_view,
+        .imageLayout = vk::ImageLayout::eGeneral,
+    };
+
+    vk::WriteDescriptorSet write_image{
+        .dstBinding = 1,
+        .descriptorCount = 1,
+        .descriptorType = vk::DescriptorType::eStorageImage,
+        .pImageInfo = &descriptor_image_info,
+    };
+
+    std::vector<vk::WriteDescriptorSet> writes{write_AS, write_image};
+
+    // command_buffer.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, /* TODO: layout */, 0, writes);
+
     command_buffer.end();
 
+    vmaDestroyImage(allocator, ray_trace_image, ray_trace_image_allocation);
     vmaDestroyBuffer(allocator, AS_buffer, AS_allocation);
     vmaDestroyBuffer(allocator, scratch_buffer, scratch_allocation);
     vmaDestroyBuffer(allocator, vertex_buffer, vertex_allocation);
