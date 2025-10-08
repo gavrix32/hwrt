@@ -7,6 +7,7 @@
 #include <vk_mem_alloc.h>
 
 #define GLFW_INCLUDE_VULKAN
+#include <fstream>
 #include <set>
 #include <GLFW/glfw3.h>
 
@@ -22,6 +23,23 @@ constexpr bool enable_validation_layers = false;
 #else
 constexpr bool enable_validation_layers = true;
 #endif
+
+std::vector<char> read_file(const std::string &filename) {
+    std::ifstream file(filename, std::ios::ate | std::ios::binary);
+
+    if (!file.is_open()) {
+        spdlog::error("Failed to open file");
+    }
+
+    std::vector<char> buffer(file.tellg());
+
+    file.seekg(0, std::ios::beg);
+    file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+
+    file.close();
+
+    return buffer;
+}
 
 static spdlog::level::level_enum to_spdlog_level(const vk::DebugUtilsMessageSeverityFlagBitsEXT severity) {
     if (severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eError) return spdlog::level::err;
@@ -284,7 +302,19 @@ void init_vulkan(GLFWwindow *window) {
             vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance |
             vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation);
 
+        std::vector validation_features_enabled_list{
+            vk::ValidationFeatureEnableEXT::eBestPractices,
+            vk::ValidationFeatureEnableEXT::eDebugPrintf,
+            vk::ValidationFeatureEnableEXT::eSynchronizationValidation,
+        }; // TODO: Check work
+
+        vk::ValidationFeaturesEXT validation_features{
+            .enabledValidationFeatureCount = static_cast<uint32_t>(validation_features_enabled_list.size()),
+            .pEnabledValidationFeatures = validation_features_enabled_list.data(),
+        };
+
         auto debug_utils_messenger_create_info_EXT = vk::DebugUtilsMessengerCreateInfoEXT{
+            .pNext = validation_features,
             .messageSeverity = severity_flags,
             .messageType = message_type_flags,
             .pfnUserCallback = &debug_callback
@@ -298,8 +328,8 @@ void init_vulkan(GLFWwindow *window) {
     required_device_extensions.push_back(vk::KHRSwapchainExtensionName);
     required_device_extensions.push_back(vk::KHRDeferredHostOperationsExtensionName);
     required_device_extensions.push_back(vk::KHRAccelerationStructureExtensionName);
+    required_device_extensions.push_back(vk::KHRRayTracingPipelineExtensionName);
     // required_device_extensions.push_back(vk::KHRDynamicRenderingExtensionName);
-    // required_device_extensions.push_back(vk::KHRRayTracingPipelineExtensionName);
 
     vk::raii::PhysicalDevice adapter = nullptr;
 
@@ -536,11 +566,11 @@ void init_vulkan(GLFWwindow *window) {
     };
     vk::DeviceAddress index_address = device.getBufferAddress(index_buffer_address_info);
 
-    // Acceleration Structure
+    // Create Bottom Level Acceleration Structure
 
     auto triangle_count = static_cast<uint32_t>(indices.size() / 3);
 
-    vk::AccelerationStructureGeometryTrianglesDataKHR AS_geometry_triangles_data{
+    vk::AccelerationStructureGeometryTrianglesDataKHR BLAS_geometry_triangles_data{
         .vertexFormat = vk::Format::eR32G32B32Sfloat,
         .vertexData = vertex_address,
         .vertexStride = sizeof(Vertex),
@@ -549,66 +579,48 @@ void init_vulkan(GLFWwindow *window) {
         .indexData = index_address,
     };
 
-    vk::AccelerationStructureGeometryKHR AS_geometry{
+    vk::AccelerationStructureGeometryKHR BLAS_geometry{
         .geometryType = vk::GeometryTypeKHR::eTriangles,
-        .geometry = AS_geometry_triangles_data,
+        .geometry = BLAS_geometry_triangles_data,
         .flags = vk::GeometryFlagBitsKHR::eOpaque,
     };
 
-    vk::AccelerationStructureBuildRangeInfoKHR AS_build_range_info{
+    vk::AccelerationStructureBuildRangeInfoKHR BLAS_build_range_info{
         .primitiveCount = triangle_count,
         .primitiveOffset = 0,
         .firstVertex = 0,
         .transformOffset = 0,
     };
 
-    auto AS_type = vk::AccelerationStructureTypeKHR::eBottomLevel;
-
-    vk::AccelerationStructureBuildGeometryInfoKHR AS_build_geometry_info{
-        .type = AS_type,
+    vk::AccelerationStructureBuildGeometryInfoKHR BLAS_build_geometry_info{
+        .type = vk::AccelerationStructureTypeKHR::eBottomLevel,
         .mode = vk::BuildAccelerationStructureModeKHR::eBuild,
         .geometryCount = 1,
-        .pGeometries = &AS_geometry,
+        .pGeometries = &BLAS_geometry,
     };
 
-    std::vector<uint32_t> max_primitive_counts(1);
-    max_primitive_counts[0] = AS_build_range_info.primitiveCount;
+    std::vector<uint32_t> BLAS_max_primitive_counts(1);
+    BLAS_max_primitive_counts[0] = BLAS_build_range_info.primitiveCount;
 
-    auto AS_build_sizes_info = device.getAccelerationStructureBuildSizesKHR(
-        vk::AccelerationStructureBuildTypeKHR::eDevice, AS_build_geometry_info,
-        max_primitive_counts);
+    auto BLAS_build_sizes_info = device.getAccelerationStructureBuildSizesKHR(
+        vk::AccelerationStructureBuildTypeKHR::eDevice, BLAS_build_geometry_info,
+        BLAS_max_primitive_counts);
 
-    VmaAllocation scratch_allocation;
+    VmaAllocation BLAS_allocation;
 
-    auto scratch_buffer = create_buffer(
+    auto BLAS_buffer = create_buffer(
         allocator,
-        AS_build_sizes_info.buildScratchSize,
-        vk::BufferUsageFlagBits::eStorageBuffer
-        | vk::BufferUsageFlagBits::eShaderDeviceAddress,
-        scratch_allocation,
-        0
-    );
-
-    vk::BufferDeviceAddressInfo scratch_buffer_address_info{
-        .buffer = scratch_buffer,
-    };
-    auto scratch_address = device.getBufferAddress(scratch_buffer_address_info);
-
-    VmaAllocation AS_allocation;
-
-    auto AS_buffer = create_buffer(
-        allocator,
-        AS_build_sizes_info.accelerationStructureSize,
+        BLAS_build_sizes_info.accelerationStructureSize,
         vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR
         | vk::BufferUsageFlagBits::eShaderDeviceAddress,
-        AS_allocation,
+        BLAS_allocation,
         0
     );
 
-    vk::AccelerationStructureCreateInfoKHR AS_create_info{
-        .buffer = AS_buffer,
-        .size = AS_build_sizes_info.accelerationStructureSize,
-        .type = AS_type,
+    vk::AccelerationStructureCreateInfoKHR BLAS_create_info{
+        .buffer = BLAS_buffer,
+        .size = BLAS_build_sizes_info.accelerationStructureSize,
+        .type = vk::AccelerationStructureTypeKHR::eBottomLevel,
     };
 
     vk::CommandPoolCreateInfo command_pool_create_info{
@@ -630,12 +642,153 @@ void init_vulkan(GLFWwindow *window) {
     };
     command_buffer.begin(begin_info);
 
-    auto AS = device.createAccelerationStructureKHR(AS_create_info);
+    auto BLAS = device.createAccelerationStructureKHR(BLAS_create_info);
 
-    AS_build_geometry_info.dstAccelerationStructure = AS;
-    AS_build_geometry_info.scratchData = scratch_address;
+    // Build Bottom Level Acceleration Structure
 
-    command_buffer.buildAccelerationStructuresKHR({AS_build_geometry_info}, {&AS_build_range_info});
+    VmaAllocation BLAS_scratch_allocation;
+
+    auto BLAS_scratch_buffer = create_buffer(
+        allocator,
+        BLAS_build_sizes_info.buildScratchSize,
+        vk::BufferUsageFlagBits::eStorageBuffer
+        | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+        BLAS_scratch_allocation,
+        VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT
+    );
+
+    vk::BufferDeviceAddressInfo BLAS_scratch_buffer_device_address_info{
+        .buffer = BLAS_scratch_buffer,
+    };
+    auto BLAS_scratch_buffer_device_address = device.getBufferAddress(BLAS_scratch_buffer_device_address_info);
+
+    BLAS_build_geometry_info.dstAccelerationStructure = BLAS;
+    BLAS_build_geometry_info.scratchData = BLAS_scratch_buffer_device_address;
+
+    command_buffer.buildAccelerationStructuresKHR({BLAS_build_geometry_info}, {&BLAS_build_range_info});
+
+    // Create Top Level Acceleration Structure
+
+    vk::AccelerationStructureDeviceAddressInfoKHR BLAS_device_address_info{
+        .accelerationStructure = BLAS
+    };
+    auto BLAS_device_address = device.getAccelerationStructureAddressKHR(BLAS_device_address_info);
+
+    vk::TransformMatrixKHR transform{
+        std::array<std::array<float, 4>, 3>{
+            {
+                {{1.f, 0.f, 0.f, 0.f}},
+                {{0.f, 1.f, 0.f, 0.f}},
+                {{0.f, 0.f, 1.f, 0.f}},
+            }
+        }
+    };
+
+    vk::AccelerationStructureInstanceKHR BLAS_instance{
+        .transform = transform,
+        .instanceCustomIndex = 0,
+        .mask = 0xFF,
+        .instanceShaderBindingTableRecordOffset = 0,
+        .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
+        .accelerationStructureReference = BLAS_device_address
+    };
+
+    VmaAllocation BLAS_instance_allocation;
+
+    auto BLAS_instance_buffer = create_buffer(
+        allocator,
+        sizeof(vk::AccelerationStructureInstanceKHR),
+        vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
+        | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+        BLAS_instance_allocation,
+        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+        | VMA_ALLOCATION_CREATE_MAPPED_BIT
+    );
+
+    {
+        VmaAllocationInfo allocation_info;
+        vmaGetAllocationInfo(allocator, BLAS_instance_allocation, &allocation_info);
+        memcpy(allocation_info.pMappedData, &BLAS_instance, sizeof(vk::AccelerationStructureInstanceKHR));
+    }
+
+    vk::BufferDeviceAddressInfo BLAS_instance_buffer_address_info{
+        .buffer = BLAS_instance_buffer
+    };
+    auto BLAS_instance_device_address = device.getBufferAddress(BLAS_instance_buffer_address_info);
+
+    vk::AccelerationStructureGeometryInstancesDataKHR TLAS_geometry_instances_data{
+        .arrayOfPointers = vk::False,
+        .data = BLAS_instance_device_address,
+    };
+
+    vk::AccelerationStructureGeometryKHR TLAS_geometry{
+        .geometryType = vk::GeometryTypeKHR::eInstances,
+        .geometry = TLAS_geometry_instances_data,
+        .flags = vk::GeometryFlagBitsKHR::eOpaque,
+    };
+
+    vk::AccelerationStructureBuildRangeInfoKHR TLAS_build_range_info{
+        .primitiveCount = 1,
+        .primitiveOffset = 0,
+        .firstVertex = 0,
+        .transformOffset = 0,
+    };
+
+    vk::AccelerationStructureBuildGeometryInfoKHR TLAS_build_geometry_info{
+        .type = vk::AccelerationStructureTypeKHR::eTopLevel,
+        .mode = vk::BuildAccelerationStructureModeKHR::eBuild,
+        .geometryCount = 1,
+        .pGeometries = &TLAS_geometry,
+    };
+
+    std::vector<uint32_t> TLAS_max_primitive_counts(1);
+    TLAS_max_primitive_counts[0] = TLAS_build_range_info.primitiveCount;
+
+    auto TLAS_build_sizes_info = device.getAccelerationStructureBuildSizesKHR(
+        vk::AccelerationStructureBuildTypeKHR::eDevice, TLAS_build_geometry_info,
+        TLAS_max_primitive_counts);
+
+    VmaAllocation TLAS_allocation;
+
+    auto TLAS_buffer = create_buffer(
+        allocator,
+        TLAS_build_sizes_info.accelerationStructureSize,
+        vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR/*
+        | vk::BufferUsageFlagBits::eShaderDeviceAddress*/,
+        TLAS_allocation,
+        0
+    );
+
+    vk::AccelerationStructureCreateInfoKHR TLAS_create_info{
+        .buffer = TLAS_buffer,
+        .size = TLAS_build_sizes_info.accelerationStructureSize,
+        .type = vk::AccelerationStructureTypeKHR::eTopLevel,
+    };
+
+    auto TLAS = device.createAccelerationStructureKHR(TLAS_create_info);
+
+    // Build Top Level Acceleration Structure
+
+    VmaAllocation TLAS_scratch_allocation;
+
+    auto TLAS_scratch_buffer = create_buffer(
+        allocator,
+        TLAS_build_sizes_info.buildScratchSize,
+        vk::BufferUsageFlagBits::eStorageBuffer
+        | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+        TLAS_scratch_allocation,
+        VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT
+    );
+
+    vk::BufferDeviceAddressInfo TLAS_scratch_buffer_device_address_info{
+        .buffer = TLAS_scratch_buffer,
+    };
+    auto TLAS_scratch_buffer_device_address = device.getBufferAddress(TLAS_scratch_buffer_device_address_info);
+
+    TLAS_build_geometry_info.dstAccelerationStructure = TLAS;
+    TLAS_build_geometry_info.scratchData = TLAS_scratch_buffer_device_address;
+
+    command_buffer.buildAccelerationStructuresKHR({TLAS_build_geometry_info}, {&TLAS_build_range_info});
 
     // Ray Trace Image
 
@@ -675,7 +828,7 @@ void init_vulkan(GLFWwindow *window) {
     layout_transition(command_buffer, ray_trace_image, vk::ImageLayout::eUndefined,
                       vk::ImageLayout::eTransferSrcOptimal);
 
-    // Push Descriptors
+    // Push Descriptors & Pipeline Layout
 
     std::vector<vk::DescriptorSetLayoutBinding> bindings;
 
@@ -707,7 +860,7 @@ void init_vulkan(GLFWwindow *window) {
 
     vk::WriteDescriptorSetAccelerationStructureKHR write_AS_info{
         .accelerationStructureCount = 1,
-        .pAccelerationStructures = &*AS,
+        .pAccelerationStructures = &*TLAS,
     };
 
     vk::WriteDescriptorSet write_AS{
@@ -729,17 +882,97 @@ void init_vulkan(GLFWwindow *window) {
         .pImageInfo = &descriptor_image_info,
     };
 
-    std::vector<vk::WriteDescriptorSet> writes{write_AS, write_image};
+    std::vector writes{write_AS, write_image};
 
-    // command_buffer.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, /* TODO: layout */, 0, writes);
+    vk::PipelineLayoutCreateInfo pipeline_layout_create_info{
+        .setLayoutCount = 1,
+        .pSetLayouts = &*descriptor_set_layout,
+    };
+
+    auto pipeline_layout = device.createPipelineLayout(pipeline_layout_create_info);
+
+    command_buffer.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, pipeline_layout, 0, writes);
+
+    // TODO: Ray Tracing Pipeline
+    // TODO: SBT
+    // TODO: Ray Trace Commands
+    // TODO: Synchronization
 
     // Ray Tracing Pipeline
+
+    auto ray_gen_shader_code = read_file("");
+    vk::ShaderModuleCreateInfo ray_gen_shader_module_create_info{
+        .codeSize = ray_gen_shader_code.size() * sizeof(char),
+        .pCode = reinterpret_cast<const uint32_t *>(ray_gen_shader_code.data()),
+    };
+    auto ray_gen_shader_module = device.createShaderModule(ray_gen_shader_module_create_info);
+
+    auto ray_miss_shader_code = read_file("");
+    vk::ShaderModuleCreateInfo ray_miss_shader_module_create_info{
+        .codeSize = ray_miss_shader_code.size() * sizeof(char),
+        .pCode = reinterpret_cast<const uint32_t *>(ray_miss_shader_code.data()),
+    };
+    auto ray_miss_shader_module = device.createShaderModule(ray_miss_shader_module_create_info);
+
+    auto closest_hit_shader_code = read_file("");
+    vk::ShaderModuleCreateInfo closest_hit_shader_module_create_info{
+        .codeSize = closest_hit_shader_code.size() * sizeof(char),
+        .pCode = reinterpret_cast<const uint32_t *>(closest_hit_shader_code.data()),
+    };
+    auto closest_hit_shader_module = device.createShaderModule(closest_hit_shader_module_create_info);
+
+    std::vector shader_stage_create_info_list = {
+        vk::PipelineShaderStageCreateInfo{
+            .stage = vk::ShaderStageFlagBits::eRaygenKHR,
+            .module = ray_gen_shader_module,
+            .pName = "main",
+        },
+        vk::PipelineShaderStageCreateInfo{
+            .stage = vk::ShaderStageFlagBits::eMissKHR,
+            .module = ray_miss_shader_module,
+            .pName = "main",
+        },
+        vk::PipelineShaderStageCreateInfo{
+            .stage = vk::ShaderStageFlagBits::eClosestHitKHR,
+            .module = closest_hit_shader_module,
+            .pName = "main",
+        },
+    };
+
+    std::vector ray_tracing_shader_group_create_info_list = {
+        vk::RayTracingShaderGroupCreateInfoKHR{
+            .type = vk::RayTracingShaderGroupTypeKHR::eGeneral,
+            .generalShader = 0,
+        },
+        vk::RayTracingShaderGroupCreateInfoKHR{
+            .type = vk::RayTracingShaderGroupTypeKHR::eGeneral,
+            .generalShader = 1,
+        },
+        vk::RayTracingShaderGroupCreateInfoKHR{
+            .type = vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup,
+            .closestHitShader = 2,
+        },
+    };
+
+    vk::RayTracingPipelineCreateInfoKHR ray_tracing_pipeline_create_info{
+        .stageCount = static_cast<uint32_t>(shader_stage_create_info_list.size()),
+        .pStages = shader_stage_create_info_list.data(),
+        .groupCount = static_cast<uint32_t>(ray_tracing_shader_group_create_info_list.size()),
+        .pGroups = ray_tracing_shader_group_create_info_list.data(),
+        .maxPipelineRayRecursionDepth = 1,
+        .layout = pipeline_layout,
+    };
+
+    auto ray_tracing_pipeline = device.createRayTracingPipelineKHR(nullptr, nullptr, ray_tracing_pipeline_create_info);
 
     command_buffer.end();
 
     vmaDestroyImage(allocator, ray_trace_image, ray_trace_image_allocation);
-    vmaDestroyBuffer(allocator, AS_buffer, AS_allocation);
-    vmaDestroyBuffer(allocator, scratch_buffer, scratch_allocation);
+    vmaDestroyBuffer(allocator, TLAS_scratch_buffer, TLAS_scratch_allocation);
+    vmaDestroyBuffer(allocator, TLAS_buffer, TLAS_allocation);
+    vmaDestroyBuffer(allocator, BLAS_instance_buffer, BLAS_instance_allocation);
+    vmaDestroyBuffer(allocator, BLAS_scratch_buffer, BLAS_scratch_allocation);
+    vmaDestroyBuffer(allocator, BLAS_buffer, BLAS_allocation);
     vmaDestroyBuffer(allocator, vertex_buffer, vertex_allocation);
     vmaDestroyBuffer(allocator, index_buffer, index_allocation);
     vmaDestroyAllocator(allocator);
