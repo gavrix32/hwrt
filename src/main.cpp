@@ -28,7 +28,7 @@ std::vector<char> read_file(const std::string &filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
     if (!file.is_open()) {
-        spdlog::error("Failed to open file");
+        spdlog::error("Failed to open file: {}", filename);
     }
 
     std::vector<char> buffer(file.tellg());
@@ -420,22 +420,23 @@ void init_vulkan(GLFWwindow *window) {
     spdlog::info("Selected queue family {}", queue_family_index);
 
     vk::PhysicalDeviceBufferDeviceAddressFeatures buffer_device_address_features{
-        .bufferDeviceAddress = vk::True
+        .bufferDeviceAddress = vk::True,
     };
 
     vk::PhysicalDeviceAccelerationStructureFeaturesKHR acceleration_structure_features{
         .pNext = buffer_device_address_features,
-        .accelerationStructure = vk::True
+        .accelerationStructure = vk::True,
     };
 
-    // vk::PhysicalDeviceRayTracingPipelineFeaturesKHR ray_tracing_pipeline_features_khr{
-    // .rayTracingPipeline = vk::True
-    // };
+    vk::PhysicalDeviceRayTracingPipelineFeaturesKHR ray_tracing_pipeline_features{
+        .pNext = acceleration_structure_features,
+        .rayTracingPipeline = vk::True,
+    };
 
     // auto features2 = adapter.getFeatures2();
 
     vk::PhysicalDeviceVulkan13Features vulkan13_features{
-        .pNext = acceleration_structure_features,
+        .pNext = ray_tracing_pipeline_features,
         .synchronization2 = vk::True,
     };
     // vulkan13_features.dynamicRendering = vk::True;
@@ -893,28 +894,27 @@ void init_vulkan(GLFWwindow *window) {
 
     command_buffer.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, pipeline_layout, 0, writes);
 
-    // TODO: Ray Tracing Pipeline
     // TODO: SBT
     // TODO: Ray Trace Commands
     // TODO: Synchronization
 
     // Ray Tracing Pipeline
 
-    auto ray_gen_shader_code = read_file("");
+    auto ray_gen_shader_code = read_file("../src/shaders/spirv/raytrace.rgen.spv");
     vk::ShaderModuleCreateInfo ray_gen_shader_module_create_info{
         .codeSize = ray_gen_shader_code.size() * sizeof(char),
         .pCode = reinterpret_cast<const uint32_t *>(ray_gen_shader_code.data()),
     };
     auto ray_gen_shader_module = device.createShaderModule(ray_gen_shader_module_create_info);
 
-    auto ray_miss_shader_code = read_file("");
+    auto ray_miss_shader_code = read_file("../src/shaders/spirv/raytrace.rmiss.spv");
     vk::ShaderModuleCreateInfo ray_miss_shader_module_create_info{
         .codeSize = ray_miss_shader_code.size() * sizeof(char),
         .pCode = reinterpret_cast<const uint32_t *>(ray_miss_shader_code.data()),
     };
     auto ray_miss_shader_module = device.createShaderModule(ray_miss_shader_module_create_info);
 
-    auto closest_hit_shader_code = read_file("");
+    auto closest_hit_shader_code = read_file("../src/shaders/spirv/raytrace.rchit.spv");
     vk::ShaderModuleCreateInfo closest_hit_shader_module_create_info{
         .codeSize = closest_hit_shader_code.size() * sizeof(char),
         .pCode = reinterpret_cast<const uint32_t *>(closest_hit_shader_code.data()),
