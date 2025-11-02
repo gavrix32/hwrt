@@ -190,7 +190,25 @@ void layout_transition(vk::raii::CommandBuffer &cmd, vk::Image image,
         srcAccessMask = vk::AccessFlagBits2::eNone;
         dstAccessMask = vk::AccessFlagBits2::eShaderWrite;
         srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe;
-        dstStageMask = vk::PipelineStageFlagBits2::eComputeShader;
+        dstStageMask = vk::PipelineStageFlagBits2::eRayTracingShaderKHR;
+    } else if (old_layout == vk::ImageLayout::eGeneral &&
+               new_layout == vk::ImageLayout::eTransferSrcOptimal) {
+        srcAccessMask = vk::AccessFlagBits2::eShaderWrite;
+        dstAccessMask = vk::AccessFlagBits2::eTransferRead;
+        srcStageMask = vk::PipelineStageFlagBits2::eRayTracingShaderKHR;
+        dstStageMask = vk::PipelineStageFlagBits2::eTransfer;
+    } else if (old_layout == vk::ImageLayout::eTransferDstOptimal &&
+               new_layout == vk::ImageLayout::ePresentSrcKHR) {
+        srcAccessMask = vk::AccessFlagBits2::eTransferWrite;
+        dstAccessMask = vk::AccessFlagBits2::eNone;
+        srcStageMask = vk::PipelineStageFlagBits2::eTransfer;
+        dstStageMask = vk::PipelineStageFlagBits2::eBottomOfPipe;
+    } else if (old_layout == vk::ImageLayout::eTransferSrcOptimal &&
+               new_layout == vk::ImageLayout::eGeneral) {
+        srcAccessMask = vk::AccessFlagBits2::eTransferRead;
+        dstAccessMask = vk::AccessFlagBits2::eShaderWrite;
+        srcStageMask = vk::PipelineStageFlagBits2::eTransfer;
+        dstStageMask = vk::PipelineStageFlagBits2::eRayTracingShaderKHR;
     } else {
         spdlog::error("Unsupported layout transition");
     }
@@ -220,6 +238,40 @@ void layout_transition(vk::raii::CommandBuffer &cmd, vk::Image image,
     };
 
     cmd.pipelineBarrier2(dependency_info);
+}
+
+vk::raii::CommandBuffer begin_single_time_commands(const vk::raii::Device &device,
+                                                   const vk::raii::CommandPool &command_pool) {
+    vk::CommandBufferAllocateInfo alloc_info{
+        .commandPool = *command_pool,
+        .level = vk::CommandBufferLevel::ePrimary,
+        .commandBufferCount = 1,
+    };
+
+    auto command_buffer = std::move(vk::raii::CommandBuffers(device, alloc_info).front());
+
+    vk::CommandBufferBeginInfo begin_info{
+        .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit
+    };
+
+    command_buffer.begin(begin_info);
+    return command_buffer;
+}
+
+void end_single_time_commands(const vk::raii::Queue &queue, vk::raii::CommandBuffer &command_buffer) {
+    command_buffer.end();
+
+    vk::SubmitInfo submit_info{
+        .commandBufferCount = 1,
+        .pCommandBuffers = &*command_buffer,
+    };
+
+    queue.submit(submit_info, nullptr);
+    queue.waitIdle();
+}
+
+uint32_t round_up(uint32_t value, uint32_t alignment) {
+    return ((value + alignment - 1) / alignment) * alignment;
 }
 
 void init_vulkan(GLFWwindow *window) {
@@ -329,6 +381,7 @@ void init_vulkan(GLFWwindow *window) {
     required_device_extensions.push_back(vk::KHRDeferredHostOperationsExtensionName);
     required_device_extensions.push_back(vk::KHRAccelerationStructureExtensionName);
     required_device_extensions.push_back(vk::KHRRayTracingPipelineExtensionName);
+    required_device_extensions.push_back(vk::KHRPushDescriptorExtensionName);
     // required_device_extensions.push_back(vk::KHRDynamicRenderingExtensionName);
 
     vk::raii::PhysicalDevice adapter = nullptr;
@@ -439,6 +492,12 @@ void init_vulkan(GLFWwindow *window) {
         .pNext = ray_tracing_pipeline_features,
         .synchronization2 = vk::True,
     };
+
+    vk::PhysicalDeviceVulkan14Features vulkan14_features{
+        .pNext = vulkan13_features,
+        .pushDescriptor = vk::True,
+    };
+
     // vulkan13_features.dynamicRendering = vk::True;
 
     // features2.pNext = &vulkan13_features;
@@ -451,7 +510,7 @@ void init_vulkan(GLFWwindow *window) {
     };
 
     vk::DeviceCreateInfo device_create_info{
-        .pNext = &vulkan13_features,
+        .pNext = &vulkan14_features,
         .queueCreateInfoCount = 1,
         .pQueueCreateInfos = &device_queue_create_info,
         .enabledExtensionCount = static_cast<uint32_t>(required_device_extensions.size()),
@@ -533,6 +592,12 @@ void init_vulkan(GLFWwindow *window) {
         | VMA_ALLOCATION_CREATE_MAPPED_BIT
     );
 
+    {
+        VmaAllocationInfo allocation_info;
+        vmaGetAllocationInfo(allocator, vertex_allocation, &allocation_info);
+        memcpy(allocation_info.pMappedData, vertices.data(), sizeof(Vertex) * vertices.size());
+    }
+
     vk::Buffer index_buffer = create_buffer(
         allocator,
         sizeof(uint32_t) * indices.size(),
@@ -544,12 +609,6 @@ void init_vulkan(GLFWwindow *window) {
         VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
         | VMA_ALLOCATION_CREATE_MAPPED_BIT
     );
-
-    {
-        VmaAllocationInfo allocation_info;
-        vmaGetAllocationInfo(allocator, vertex_allocation, &allocation_info);
-        memcpy(allocation_info.pMappedData, vertices.data(), sizeof(Vertex) * vertices.size());
-    }
 
     {
         VmaAllocationInfo allocation_info;
@@ -630,18 +689,9 @@ void init_vulkan(GLFWwindow *window) {
     };
     auto command_pool = vk::raii::CommandPool(device, command_pool_create_info);
 
-    vk::CommandBufferAllocateInfo command_buffer_allocate_info{
-        .commandPool = command_pool,
-        .level = vk::CommandBufferLevel::ePrimary,
-        .commandBufferCount = 1,
-    };
-    auto command_buffers = vk::raii::CommandBuffers(device, command_buffer_allocate_info);
-    auto command_buffer = std::move(command_buffers.front());
+    auto command_buffer = begin_single_time_commands(device, command_pool);
 
-    vk::CommandBufferBeginInfo begin_info{
-        .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit
-    };
-    command_buffer.begin(begin_info);
+    constexpr int frames_in_flight = 2;
 
     auto BLAS = device.createAccelerationStructureKHR(BLAS_create_info);
 
@@ -827,7 +877,7 @@ void init_vulkan(GLFWwindow *window) {
     auto ray_trace_image_view = device.createImageView(ray_trace_image_view_create_info);
 
     layout_transition(command_buffer, ray_trace_image, vk::ImageLayout::eUndefined,
-                      vk::ImageLayout::eTransferSrcOptimal);
+                      vk::ImageLayout::eGeneral);
 
     // Push Descriptors & Pipeline Layout
 
@@ -892,11 +942,19 @@ void init_vulkan(GLFWwindow *window) {
 
     auto pipeline_layout = device.createPipelineLayout(pipeline_layout_create_info);
 
-    command_buffer.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, pipeline_layout, 0, writes);
+    vk::MemoryBarrier2 AS_build_barrier{
+        .srcStageMask = vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
+        .srcAccessMask = vk::AccessFlagBits2::eAccelerationStructureWriteKHR,
+        .dstStageMask = vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
+        .dstAccessMask = vk::AccessFlagBits2::eAccelerationStructureReadKHR,
+    };
 
-    // TODO: SBT
-    // TODO: Ray Trace Commands
-    // TODO: Synchronization
+    vk::DependencyInfo dependency_info_as_build{
+        .memoryBarrierCount = 1,
+        .pMemoryBarriers = &AS_build_barrier,
+    };
+
+    command_buffer.pipelineBarrier2(dependency_info_as_build);
 
     // Ray Tracing Pipeline
 
@@ -965,9 +1023,239 @@ void init_vulkan(GLFWwindow *window) {
 
     auto ray_tracing_pipeline = device.createRayTracingPipelineKHR(nullptr, nullptr, ray_tracing_pipeline_create_info);
 
-    command_buffer.end();
+    end_single_time_commands(queue, command_buffer);
+
+    // Shader Binding Table
+
+    vk::StructureChain<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>
+            ray_tracing_pipeline_properties_chain =
+                    adapter.getProperties2<vk::PhysicalDeviceProperties2,
+                        vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
+
+    uint32_t shader_group_base_alignment = ray_tracing_pipeline_properties_chain.get<
+        vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>().shaderGroupBaseAlignment;
+
+    uint32_t shader_group_handle_size = ray_tracing_pipeline_properties_chain.get<
+        vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>().shaderGroupHandleSize;
+
+    uint32_t rgen_shader_binding_offset = 0;
+    uint32_t rgen_shader_table_size = shader_group_handle_size;
+
+    uint32_t rmiss_shader_binding_offset = rgen_shader_binding_offset + round_up(
+                                               rgen_shader_table_size, shader_group_base_alignment);
+    uint32_t rmiss_shader_binding_stride = shader_group_handle_size;
+    uint32_t rmiss_shader_table_size = rmiss_shader_binding_stride;
+
+    uint32_t rchit_shader_binding_offset = rmiss_shader_binding_offset + round_up(
+                                               rmiss_shader_table_size, shader_group_base_alignment);
+    uint32_t rchit_shader_binding_stride = shader_group_handle_size;
+    uint32_t rchit_shader_table_size = rchit_shader_binding_stride;
+
+    uint32_t shader_binding_table_size = rchit_shader_binding_offset + rchit_shader_table_size;
+
+    std::vector<uint8_t> shader_handle_storage(shader_binding_table_size);
+
+    PFN_vkGetRayTracingShaderGroupHandlesKHR pfn_vkGetRayTracingShaderGroupHandlesKHR;
+
+    pfn_vkGetRayTracingShaderGroupHandlesKHR =
+            reinterpret_cast<PFN_vkGetRayTracingShaderGroupHandlesKHR>(vkGetDeviceProcAddr(
+                *device,
+                "vkGetRayTracingShaderGroupHandlesKHR"
+            ));
+
+    (void) pfn_vkGetRayTracingShaderGroupHandlesKHR(*device, *ray_tracing_pipeline, 0, 1, rgen_shader_table_size,
+                                                    &shader_handle_storage[rgen_shader_binding_offset]);
+    (void) pfn_vkGetRayTracingShaderGroupHandlesKHR(*device, *ray_tracing_pipeline, 1, 1, rmiss_shader_table_size,
+                                                    &shader_handle_storage[rmiss_shader_binding_offset]);
+    (void) pfn_vkGetRayTracingShaderGroupHandlesKHR(*device, *ray_tracing_pipeline, 2, 1, rchit_shader_table_size,
+                                                    &shader_handle_storage[rchit_shader_binding_offset]);
+
+    VmaAllocation shader_binding_table_allocation;
+
+    vk::Buffer shader_binding_table_buffer = create_buffer(
+        allocator,
+        shader_binding_table_size,
+        vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eShaderBindingTableKHR,
+        shader_binding_table_allocation,
+        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+        | VMA_ALLOCATION_CREATE_MAPPED_BIT
+    );
+
+    {
+        VmaAllocationInfo allocation_info;
+        vmaGetAllocationInfo(allocator, shader_binding_table_allocation, &allocation_info);
+        memcpy(allocation_info.pMappedData, shader_handle_storage.data(), shader_binding_table_size);
+    }
+
+    vk::BufferDeviceAddressInfo shader_binding_table_buffer_address_info{
+        .buffer = shader_binding_table_buffer,
+    };
+    vk::DeviceAddress shader_binding_table_address = device.getBufferAddress(shader_binding_table_buffer_address_info);
+
+    vk::StridedDeviceAddressRegionKHR rgen_region{
+        .deviceAddress = shader_binding_table_address + rgen_shader_binding_offset,
+        .stride = rgen_shader_table_size,
+        .size = rgen_shader_table_size,
+    };
+
+    vk::StridedDeviceAddressRegionKHR rmiss_region{
+        .deviceAddress = shader_binding_table_address + rmiss_shader_binding_offset,
+        .stride = rmiss_shader_binding_stride,
+        .size = rmiss_shader_table_size,
+    };
+
+    vk::StridedDeviceAddressRegionKHR rchit_region{
+        .deviceAddress = shader_binding_table_address + rchit_shader_binding_offset,
+        .stride = rchit_shader_binding_stride,
+        .size = rchit_shader_table_size,
+    };
+
+    vk::StridedDeviceAddressRegionKHR callable_region{};
+
+    std::vector<vk::raii::Semaphore> image_available_semaphores;
+    std::vector<vk::raii::Semaphore> render_finished_semaphores;
+    std::vector<vk::raii::Fence> render_fences;
+
+    vk::CommandBufferAllocateInfo command_buffer_allocate_info{
+        .commandPool = command_pool,
+        .level = vk::CommandBufferLevel::ePrimary,
+        .commandBufferCount = frames_in_flight,
+    };
+    auto command_buffers = vk::raii::CommandBuffers(device, command_buffer_allocate_info);
+
+    for (size_t i = 0; i < frames_in_flight; ++i) {
+        vk::FenceCreateInfo fence_create_info{
+            .flags = vk::FenceCreateFlagBits::eSignaled
+        };
+        render_fences.emplace_back(device, fence_create_info);
+
+        vk::SemaphoreCreateInfo semaphore_info;
+        image_available_semaphores.emplace_back(device, semaphore_info);
+    }
+
+    for (size_t i = 0; i < swapchain_images.size(); ++i) {
+        vk::SemaphoreCreateInfo semaphore_info;
+        render_finished_semaphores.emplace_back(device, semaphore_info);
+    }
+
+    uint32_t frame_index = 0;
+
+    while (!glfwWindowShouldClose(window)) {
+        (void) device.waitForFences({*render_fences[frame_index]}, vk::True, std::numeric_limits<uint64_t>::max());
+        device.resetFences({*render_fences[frame_index]});
+
+        uint32_t image_index;
+
+        auto &current_image_available_semaphore = image_available_semaphores[frame_index];
+
+        vk::AcquireNextImageInfoKHR acquire_info{
+            .swapchain = swapchain,
+            .timeout = std::numeric_limits<uint64_t>::max(),
+            .semaphore = current_image_available_semaphore,
+            .deviceMask = 1,
+        };
+        image_index = device.acquireNextImage2KHR(acquire_info).value;
+        auto current_swapchain_image = swapchain_images[image_index];
+
+        auto &current_render_finished_semaphore = render_finished_semaphores[image_index];
+
+        auto &render_command_buffer = command_buffers[frame_index];
+
+        render_command_buffer.reset();
+        vk::CommandBufferBeginInfo begin_info{};
+        render_command_buffer.begin(begin_info);
+
+        // Begin
+
+        render_command_buffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, ray_tracing_pipeline);
+
+        render_command_buffer.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, pipeline_layout, 0, writes);
+
+        render_command_buffer.traceRaysKHR(rgen_region, rmiss_region, rchit_region, callable_region,
+                                           swapchain_extent.width,
+                                           swapchain_extent.height, 1);
+
+        layout_transition(render_command_buffer, ray_trace_image, vk::ImageLayout::eGeneral,
+                          vk::ImageLayout::eTransferSrcOptimal);
+
+        vk::ImageCopy copy_region{
+            .srcSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
+            .dstSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
+            .extent = vk::Extent3D{swapchain_extent.width, swapchain_extent.height, 1},
+        };
+
+        layout_transition(render_command_buffer, current_swapchain_image, vk::ImageLayout::eUndefined,
+                          vk::ImageLayout::eTransferDstOptimal);
+
+        render_command_buffer.copyImage(
+            ray_trace_image, vk::ImageLayout::eTransferSrcOptimal,
+            current_swapchain_image, vk::ImageLayout::eTransferDstOptimal,
+            copy_region
+        );
+
+        layout_transition(render_command_buffer, current_swapchain_image, vk::ImageLayout::eTransferDstOptimal,
+                          vk::ImageLayout::ePresentSrcKHR);
+
+        layout_transition(render_command_buffer, ray_trace_image, vk::ImageLayout::eTransferSrcOptimal,
+                          vk::ImageLayout::eGeneral);
+
+        render_command_buffer.end();
+        // End
+
+        vk::PipelineStageFlags wait_stage = vk::PipelineStageFlagBits::eTopOfPipe;
+
+        vk::SubmitInfo render_submit_info{
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &*current_image_available_semaphore,
+            .pWaitDstStageMask = &wait_stage,
+
+            .commandBufferCount = 1,
+            .pCommandBuffers = &*render_command_buffer,
+
+            .signalSemaphoreCount = 1,
+            .pSignalSemaphores = &*current_render_finished_semaphore,
+        };
+
+        queue.submit(render_submit_info, *render_fences[frame_index]);
+
+        vk::PresentInfoKHR present_info{
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &*current_render_finished_semaphore,
+            .swapchainCount = 1,
+            .pSwapchains = &*swapchain,
+            .pImageIndices = &image_index,
+        };
+
+        (void) queue.presentKHR(present_info);
+
+        static auto last_update_time = std::chrono::high_resolution_clock::now();
+        static int frame_count = 0;
+
+        frame_count++;
+
+        auto current_time = std::chrono::high_resolution_clock::now();
+
+        std::chrono::duration<double> elapsed_time = current_time - last_update_time;
+
+        if (elapsed_time.count() >= 1.0) {
+            double fps = static_cast<double>(frame_count) / elapsed_time.count();
+
+            spdlog::info("{:.0f} fps ({:.2f} ms)",
+                         fps, 1000.0 / fps);
+
+            frame_count = 0;
+            last_update_time = current_time;
+        }
+
+        glfwPollEvents();
+
+        frame_index = (frame_index + 1) % frames_in_flight;
+    }
+
+    device.waitIdle();
 
     vmaDestroyImage(allocator, ray_trace_image, ray_trace_image_allocation);
+    vmaDestroyBuffer(allocator, shader_binding_table_buffer, shader_binding_table_allocation);
     vmaDestroyBuffer(allocator, TLAS_scratch_buffer, TLAS_scratch_allocation);
     vmaDestroyBuffer(allocator, TLAS_buffer, TLAS_allocation);
     vmaDestroyBuffer(allocator, BLAS_instance_buffer, BLAS_instance_allocation);
@@ -980,24 +1268,28 @@ void init_vulkan(GLFWwindow *window) {
 
 int main() {
 #ifdef NDEBUG
-    spdlog::set_level(spdlog::level::warn);
+    spdlog::set_level(spdlog::level::info);
 #else
     spdlog::set_level(spdlog::level::trace);
 #endif
 
+    glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
     glfwInit();
+
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
     GLFWwindow *window = glfwCreateWindow(800, 600, "HWRT", nullptr, nullptr);
+
+    if (!window) {
+        spdlog::error("Failed to create GLFW window");
+        glfwTerminate();
+        return 1;
+    }
 
     {
         // Need for cleanup Vulkan RAII objects before GLFW
         init_vulkan(window);
     }
-
-    // while (!glfwWindowShouldClose(window)) {
-    //     glfwPollEvents();
-    // }
 
     glfwDestroyWindow(window);
     glfwTerminate();
