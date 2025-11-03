@@ -16,7 +16,7 @@ void main() {
 
     float3 color = float3(0.0, 0.0, 0.0);
 
-    TraceRay(TLAS, 0, 0xFF, 0, 0, 0, ray, color);
+    TraceRay(TLAS, RAY_FLAG_FORCE_OPAQUE, 0xFF, 0, 0, 0, ray, color);
 
     out_image[int2(launch_id)] = float4(color, 1.0);
 }

@@ -129,6 +129,7 @@ vk::Buffer create_buffer(VmaAllocator allocator,
     const VmaAllocationCreateInfo allocation_create_info = {
         .flags = allocation_create_flags,
         .usage = VMA_MEMORY_USAGE_AUTO,
+        .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
     };
 
     VkBuffer buffer;
@@ -330,7 +331,20 @@ void init_vulkan(GLFWwindow *window) {
         .apiVersion = vk::ApiVersion14,
     };
 
+    std::vector validation_features_enabled_list{
+        //// vk::ValidationFeatureEnableEXT::eDebugPrintf,
+        vk::ValidationFeatureEnableEXT::eBestPractices,
+        vk::ValidationFeatureEnableEXT::eSynchronizationValidation,
+        // vk::ValidationFeatureEnableEXT::eGpuAssisted,
+    };
+
+    vk::ValidationFeaturesEXT validation_features{
+        .enabledValidationFeatureCount = static_cast<uint32_t>(validation_features_enabled_list.size()),
+        .pEnabledValidationFeatures = validation_features_enabled_list.data(),
+    };
+
     vk::InstanceCreateInfo instance_create_info{
+        .pNext = validation_features,
         .pApplicationInfo = &app_info,
         .enabledExtensionCount = static_cast<uint32_t>(required_instance_extensions.size()),
         .ppEnabledExtensionNames = required_instance_extensions.data(),
@@ -354,19 +368,7 @@ void init_vulkan(GLFWwindow *window) {
             vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance |
             vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation);
 
-        std::vector validation_features_enabled_list{
-            vk::ValidationFeatureEnableEXT::eBestPractices,
-            vk::ValidationFeatureEnableEXT::eDebugPrintf,
-            vk::ValidationFeatureEnableEXT::eSynchronizationValidation,
-        }; // TODO: Check work
-
-        vk::ValidationFeaturesEXT validation_features{
-            .enabledValidationFeatureCount = static_cast<uint32_t>(validation_features_enabled_list.size()),
-            .pEnabledValidationFeatures = validation_features_enabled_list.data(),
-        };
-
         auto debug_utils_messenger_create_info_EXT = vk::DebugUtilsMessengerCreateInfoEXT{
-            .pNext = validation_features,
             .messageSeverity = severity_flags,
             .messageType = message_type_flags,
             .pfnUserCallback = &debug_callback
@@ -381,7 +383,7 @@ void init_vulkan(GLFWwindow *window) {
     required_device_extensions.push_back(vk::KHRDeferredHostOperationsExtensionName);
     required_device_extensions.push_back(vk::KHRAccelerationStructureExtensionName);
     required_device_extensions.push_back(vk::KHRRayTracingPipelineExtensionName);
-    required_device_extensions.push_back(vk::KHRPushDescriptorExtensionName);
+    // required_device_extensions.push_back(vk::KHRPushDescriptorExtensionName);
     // required_device_extensions.push_back(vk::KHRDynamicRenderingExtensionName);
 
     vk::raii::PhysicalDevice adapter = nullptr;
@@ -464,7 +466,7 @@ void init_vulkan(GLFWwindow *window) {
                       queue_family_property.queueCount, present_support,
                       flag_names);
 
-        if (flags & vk::QueueFlagBits::eCompute && !(flags & vk::QueueFlagBits::eGraphics)) {
+        if (flags & vk::QueueFlagBits::eCompute && (flags & vk::QueueFlagBits::eGraphics)) {
             queue_family_index = i;
         }
 
@@ -683,13 +685,13 @@ void init_vulkan(GLFWwindow *window) {
         .type = vk::AccelerationStructureTypeKHR::eBottomLevel,
     };
 
-    vk::CommandPoolCreateInfo command_pool_create_info{
+    vk::CommandPoolCreateInfo single_time_command_pool_create_info{
         .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
         .queueFamilyIndex = static_cast<uint32_t>(queue_family_index),
     };
-    auto command_pool = vk::raii::CommandPool(device, command_pool_create_info);
+    auto single_time_command_pool1 = vk::raii::CommandPool(device, single_time_command_pool_create_info);
 
-    auto command_buffer = begin_single_time_commands(device, command_pool);
+    auto single_time_command_buffer1 = begin_single_time_commands(device, single_time_command_pool1);
 
     constexpr int frames_in_flight = 2;
 
@@ -716,7 +718,9 @@ void init_vulkan(GLFWwindow *window) {
     BLAS_build_geometry_info.dstAccelerationStructure = BLAS;
     BLAS_build_geometry_info.scratchData = BLAS_scratch_buffer_device_address;
 
-    command_buffer.buildAccelerationStructuresKHR({BLAS_build_geometry_info}, {&BLAS_build_range_info});
+    single_time_command_buffer1.buildAccelerationStructuresKHR({BLAS_build_geometry_info}, {&BLAS_build_range_info});
+
+    end_single_time_commands(queue, single_time_command_buffer1);
 
     // Create Top Level Acceleration Structure
 
@@ -839,7 +843,24 @@ void init_vulkan(GLFWwindow *window) {
     TLAS_build_geometry_info.dstAccelerationStructure = TLAS;
     TLAS_build_geometry_info.scratchData = TLAS_scratch_buffer_device_address;
 
-    command_buffer.buildAccelerationStructuresKHR({TLAS_build_geometry_info}, {&TLAS_build_range_info});
+    auto single_time_command_pool2 = vk::raii::CommandPool(device, single_time_command_pool_create_info);
+    auto single_time_command_buffer2 = begin_single_time_commands(device, single_time_command_pool2);
+
+    single_time_command_buffer2.buildAccelerationStructuresKHR({TLAS_build_geometry_info}, {&TLAS_build_range_info});
+
+    vk::MemoryBarrier2 AS_build_barrier{
+        .srcStageMask = vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
+        .srcAccessMask = vk::AccessFlagBits2::eAccelerationStructureWriteKHR,
+        .dstStageMask = vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
+        .dstAccessMask = vk::AccessFlagBits2::eAccelerationStructureReadKHR,
+    };
+
+    vk::DependencyInfo dependency_info_as_build{
+        .memoryBarrierCount = 1,
+        .pMemoryBarriers = &AS_build_barrier,
+    };
+
+    single_time_command_buffer2.pipelineBarrier2(dependency_info_as_build);
 
     // Ray Trace Image
 
@@ -876,8 +897,10 @@ void init_vulkan(GLFWwindow *window) {
     };
     auto ray_trace_image_view = device.createImageView(ray_trace_image_view_create_info);
 
-    layout_transition(command_buffer, ray_trace_image, vk::ImageLayout::eUndefined,
+    layout_transition(single_time_command_buffer2, ray_trace_image, vk::ImageLayout::eUndefined,
                       vk::ImageLayout::eGeneral);
+
+    end_single_time_commands(queue, single_time_command_buffer2);
 
     // Push Descriptors & Pipeline Layout
 
@@ -941,20 +964,6 @@ void init_vulkan(GLFWwindow *window) {
     };
 
     auto pipeline_layout = device.createPipelineLayout(pipeline_layout_create_info);
-
-    vk::MemoryBarrier2 AS_build_barrier{
-        .srcStageMask = vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
-        .srcAccessMask = vk::AccessFlagBits2::eAccelerationStructureWriteKHR,
-        .dstStageMask = vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
-        .dstAccessMask = vk::AccessFlagBits2::eAccelerationStructureReadKHR,
-    };
-
-    vk::DependencyInfo dependency_info_as_build{
-        .memoryBarrierCount = 1,
-        .pMemoryBarriers = &AS_build_barrier,
-    };
-
-    command_buffer.pipelineBarrier2(dependency_info_as_build);
 
     // Ray Tracing Pipeline
 
@@ -1023,8 +1032,6 @@ void init_vulkan(GLFWwindow *window) {
 
     auto ray_tracing_pipeline = device.createRayTracingPipelineKHR(nullptr, nullptr, ray_tracing_pipeline_create_info);
 
-    end_single_time_commands(queue, command_buffer);
-
     // Shader Binding Table
 
     vk::StructureChain<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>
@@ -1032,28 +1039,18 @@ void init_vulkan(GLFWwindow *window) {
                     adapter.getProperties2<vk::PhysicalDeviceProperties2,
                         vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
 
-    uint32_t shader_group_base_alignment = ray_tracing_pipeline_properties_chain.get<
-        vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>().shaderGroupBaseAlignment;
+    auto ray_tracing_pipeline_properties = ray_tracing_pipeline_properties_chain.get<
+        vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
 
-    uint32_t shader_group_handle_size = ray_tracing_pipeline_properties_chain.get<
-        vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>().shaderGroupHandleSize;
+    uint32_t handle_size = ray_tracing_pipeline_properties.shaderGroupHandleSize;
+    uint32_t handle_alignment = ray_tracing_pipeline_properties.shaderGroupHandleAlignment;
+    uint32_t base_alignment = ray_tracing_pipeline_properties.shaderGroupBaseAlignment;
+    uint32_t group_count = ray_tracing_pipeline_create_info.groupCount;
 
-    uint32_t rgen_shader_binding_offset = 0;
-    uint32_t rgen_shader_table_size = shader_group_handle_size;
+    size_t data_size = handle_size * group_count;
 
-    uint32_t rmiss_shader_binding_offset = rgen_shader_binding_offset + round_up(
-                                               rgen_shader_table_size, shader_group_base_alignment);
-    uint32_t rmiss_shader_binding_stride = shader_group_handle_size;
-    uint32_t rmiss_shader_table_size = rmiss_shader_binding_stride;
-
-    uint32_t rchit_shader_binding_offset = rmiss_shader_binding_offset + round_up(
-                                               rmiss_shader_table_size, shader_group_base_alignment);
-    uint32_t rchit_shader_binding_stride = shader_group_handle_size;
-    uint32_t rchit_shader_table_size = rchit_shader_binding_stride;
-
-    uint32_t shader_binding_table_size = rchit_shader_binding_offset + rchit_shader_table_size;
-
-    std::vector<uint8_t> shader_handle_storage(shader_binding_table_size);
+    std::vector<uint8_t> shader_handles;
+    shader_handles.reserve(data_size);
 
     PFN_vkGetRayTracingShaderGroupHandlesKHR pfn_vkGetRayTracingShaderGroupHandlesKHR;
 
@@ -1063,58 +1060,79 @@ void init_vulkan(GLFWwindow *window) {
                 "vkGetRayTracingShaderGroupHandlesKHR"
             ));
 
-    (void) pfn_vkGetRayTracingShaderGroupHandlesKHR(*device, *ray_tracing_pipeline, 0, 1, rgen_shader_table_size,
-                                                    &shader_handle_storage[rgen_shader_binding_offset]);
-    (void) pfn_vkGetRayTracingShaderGroupHandlesKHR(*device, *ray_tracing_pipeline, 1, 1, rmiss_shader_table_size,
-                                                    &shader_handle_storage[rmiss_shader_binding_offset]);
-    (void) pfn_vkGetRayTracingShaderGroupHandlesKHR(*device, *ray_tracing_pipeline, 2, 1, rchit_shader_table_size,
-                                                    &shader_handle_storage[rchit_shader_binding_offset]);
+    (void) pfn_vkGetRayTracingShaderGroupHandlesKHR(*device, *ray_tracing_pipeline, 0, group_count, data_size,
+                                                    shader_handles.data());
+
+    auto align_up = [](uint32_t size, uint32_t alignment) { return (size + alignment - 1) & ~(alignment - 1); };
+    uint32_t rgen_size = align_up(handle_size, handle_alignment);
+    uint32_t rmiss_size = align_up(handle_size, handle_alignment);
+    uint32_t rchit_size = align_up(handle_size, handle_alignment);
+    uint32_t callable_size = 0;
+
+    uint32_t rgen_offset = 0;
+    uint32_t rmiss_offset = align_up(rgen_size, base_alignment);
+    uint32_t rchit_offset = align_up(rmiss_offset + rmiss_size, base_alignment);
+    uint32_t callable_offset = align_up(rchit_offset + rchit_size, base_alignment);
+
+    size_t buffer_size = callable_offset + callable_size;
+
+    vk::StridedDeviceAddressRegionKHR rgen_region{};
+    vk::StridedDeviceAddressRegionKHR rmiss_region{};
+    vk::StridedDeviceAddressRegionKHR rchit_region{};
+    vk::StridedDeviceAddressRegionKHR callable_region{};
 
     VmaAllocation shader_binding_table_allocation;
 
     vk::Buffer shader_binding_table_buffer = create_buffer(
         allocator,
-        shader_binding_table_size,
+        buffer_size,
         vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eShaderBindingTableKHR,
         shader_binding_table_allocation,
-        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+        VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
         | VMA_ALLOCATION_CREATE_MAPPED_BIT
     );
 
     {
+        vk::BufferDeviceAddressInfo shader_binding_table_buffer_address_info{
+            .buffer = shader_binding_table_buffer,
+        };
+        vk::DeviceAddress shader_binding_table_address = device.getBufferAddress(
+            shader_binding_table_buffer_address_info);
+
         VmaAllocationInfo allocation_info;
         vmaGetAllocationInfo(allocator, shader_binding_table_allocation, &allocation_info);
-        memcpy(allocation_info.pMappedData, shader_handle_storage.data(), shader_binding_table_size);
+
+        auto *p_data = static_cast<uint8_t *>(allocation_info.pMappedData);
+
+        memcpy(p_data + rgen_offset, shader_handles.data() + 0 * handle_size, handle_size);
+        rgen_region.deviceAddress = shader_binding_table_address + rgen_offset;
+        rgen_region.stride = rgen_size;
+        rgen_region.size = rgen_size;
+
+        memcpy(p_data + rmiss_offset, shader_handles.data() + 1 * handle_size, handle_size);
+        rmiss_region.deviceAddress = shader_binding_table_address + rmiss_offset;
+        rmiss_region.stride = rmiss_size;
+        rmiss_region.size = rmiss_size;
+
+        memcpy(p_data + rchit_offset, shader_handles.data() + 2 * handle_size, handle_size);
+        rchit_region.deviceAddress = shader_binding_table_address + rchit_offset;
+        rchit_region.stride = rchit_size;
+        rchit_region.size = rchit_size;
+
+        callable_region.deviceAddress = 0;
+        callable_region.stride = 0;
+        callable_region.size = 0;
     }
-
-    vk::BufferDeviceAddressInfo shader_binding_table_buffer_address_info{
-        .buffer = shader_binding_table_buffer,
-    };
-    vk::DeviceAddress shader_binding_table_address = device.getBufferAddress(shader_binding_table_buffer_address_info);
-
-    vk::StridedDeviceAddressRegionKHR rgen_region{
-        .deviceAddress = shader_binding_table_address + rgen_shader_binding_offset,
-        .stride = rgen_shader_table_size,
-        .size = rgen_shader_table_size,
-    };
-
-    vk::StridedDeviceAddressRegionKHR rmiss_region{
-        .deviceAddress = shader_binding_table_address + rmiss_shader_binding_offset,
-        .stride = rmiss_shader_binding_stride,
-        .size = rmiss_shader_table_size,
-    };
-
-    vk::StridedDeviceAddressRegionKHR rchit_region{
-        .deviceAddress = shader_binding_table_address + rchit_shader_binding_offset,
-        .stride = rchit_shader_binding_stride,
-        .size = rchit_shader_table_size,
-    };
-
-    vk::StridedDeviceAddressRegionKHR callable_region{};
 
     std::vector<vk::raii::Semaphore> image_available_semaphores;
     std::vector<vk::raii::Semaphore> render_finished_semaphores;
     std::vector<vk::raii::Fence> render_fences;
+
+    vk::CommandPoolCreateInfo command_pool_create_info{
+        .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+        .queueFamilyIndex = static_cast<uint32_t>(queue_family_index),
+    };
+    auto command_pool = vk::raii::CommandPool(device, command_pool_create_info);
 
     vk::CommandBufferAllocateInfo command_buffer_allocate_info{
         .commandPool = command_pool,
@@ -1139,6 +1157,8 @@ void init_vulkan(GLFWwindow *window) {
     }
 
     uint32_t frame_index = 0;
+
+    queue.waitIdle();
 
     while (!glfwWindowShouldClose(window)) {
         (void) device.waitForFences({*render_fences[frame_index]}, vk::True, std::numeric_limits<uint64_t>::max());
