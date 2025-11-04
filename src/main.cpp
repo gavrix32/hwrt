@@ -161,7 +161,7 @@ vk::Image create_image(vk::ImageCreateInfo image_create_info, VmaAllocator alloc
     return image;
 }
 
-void layout_transition(vk::raii::CommandBuffer &cmd, vk::Image image,
+void layout_transition(vk::raii::CommandBuffer &cmd_buffer, vk::Image image,
                        vk::ImageLayout old_layout, vk::ImageLayout new_layout) {
     vk::AccessFlags2 srcAccessMask;
     vk::AccessFlags2 dstAccessMask;
@@ -237,42 +237,39 @@ void layout_transition(vk::raii::CommandBuffer &cmd, vk::Image image,
         .imageMemoryBarrierCount = 1,
         .pImageMemoryBarriers = &barrier
     };
-
-    cmd.pipelineBarrier2(dependency_info);
+    cmd_buffer.pipelineBarrier2(dependency_info);
 }
 
 vk::raii::CommandBuffer begin_single_time_commands(const vk::raii::Device &device,
-                                                   const vk::raii::CommandPool &command_pool) {
+                                                   const vk::raii::CommandPool &cmd_pool) {
     vk::CommandBufferAllocateInfo alloc_info{
-        .commandPool = *command_pool,
+        .commandPool = *cmd_pool,
         .level = vk::CommandBufferLevel::ePrimary,
         .commandBufferCount = 1,
     };
-
-    auto command_buffer = std::move(vk::raii::CommandBuffers(device, alloc_info).front());
+    auto cmd_buffer = std::move(vk::raii::CommandBuffers(device, alloc_info).front());
 
     vk::CommandBufferBeginInfo begin_info{
         .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit
     };
+    cmd_buffer.begin(begin_info);
 
-    command_buffer.begin(begin_info);
-    return command_buffer;
+    return cmd_buffer;
 }
 
-void end_single_time_commands(const vk::raii::Queue &queue, vk::raii::CommandBuffer &command_buffer) {
-    command_buffer.end();
+void end_single_time_commands(const vk::raii::Queue &queue, vk::raii::CommandBuffer &cmd_buffer) {
+    cmd_buffer.end();
 
     vk::SubmitInfo submit_info{
         .commandBufferCount = 1,
-        .pCommandBuffers = &*command_buffer,
+        .pCommandBuffers = &*cmd_buffer,
     };
-
     queue.submit(submit_info, nullptr);
     queue.waitIdle();
 }
 
 uint32_t round_up(uint32_t value, uint32_t alignment) {
-    return ((value + alignment - 1) / alignment) * alignment;
+    return (value + alignment - 1) / alignment * alignment;
 }
 
 void init_vulkan(GLFWwindow *window) {
@@ -685,13 +682,13 @@ void init_vulkan(GLFWwindow *window) {
         .type = vk::AccelerationStructureTypeKHR::eBottomLevel,
     };
 
-    vk::CommandPoolCreateInfo single_time_command_pool_create_info{
+    vk::CommandPoolCreateInfo cmd_pool_create_info{
         .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
         .queueFamilyIndex = static_cast<uint32_t>(queue_family_index),
     };
-    auto single_time_command_pool1 = vk::raii::CommandPool(device, single_time_command_pool_create_info);
+    auto cmd_pool = vk::raii::CommandPool(device, cmd_pool_create_info);
 
-    auto single_time_command_buffer1 = begin_single_time_commands(device, single_time_command_pool1);
+    auto single_time_cmd_buffer = begin_single_time_commands(device, cmd_pool);
 
     constexpr int frames_in_flight = 2;
 
@@ -718,9 +715,21 @@ void init_vulkan(GLFWwindow *window) {
     BLAS_build_geometry_info.dstAccelerationStructure = BLAS;
     BLAS_build_geometry_info.scratchData = BLAS_scratch_buffer_device_address;
 
-    single_time_command_buffer1.buildAccelerationStructuresKHR({BLAS_build_geometry_info}, {&BLAS_build_range_info});
+    single_time_cmd_buffer.buildAccelerationStructuresKHR({BLAS_build_geometry_info}, {&BLAS_build_range_info});
 
-    end_single_time_commands(queue, single_time_command_buffer1);
+    vk::MemoryBarrier2 AS_build_barrier{
+        .srcStageMask = vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
+        .srcAccessMask = vk::AccessFlagBits2::eAccelerationStructureWriteKHR,
+        .dstStageMask = vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
+        .dstAccessMask = vk::AccessFlagBits2::eAccelerationStructureReadKHR,
+    };
+
+    vk::DependencyInfo dependency_info_as_build{
+        .memoryBarrierCount = 1,
+        .pMemoryBarriers = &AS_build_barrier,
+    };
+
+    single_time_cmd_buffer.pipelineBarrier2(dependency_info_as_build);
 
     // Create Top Level Acceleration Structure
 
@@ -843,24 +852,7 @@ void init_vulkan(GLFWwindow *window) {
     TLAS_build_geometry_info.dstAccelerationStructure = TLAS;
     TLAS_build_geometry_info.scratchData = TLAS_scratch_buffer_device_address;
 
-    auto single_time_command_pool2 = vk::raii::CommandPool(device, single_time_command_pool_create_info);
-    auto single_time_command_buffer2 = begin_single_time_commands(device, single_time_command_pool2);
-
-    single_time_command_buffer2.buildAccelerationStructuresKHR({TLAS_build_geometry_info}, {&TLAS_build_range_info});
-
-    vk::MemoryBarrier2 AS_build_barrier{
-        .srcStageMask = vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
-        .srcAccessMask = vk::AccessFlagBits2::eAccelerationStructureWriteKHR,
-        .dstStageMask = vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
-        .dstAccessMask = vk::AccessFlagBits2::eAccelerationStructureReadKHR,
-    };
-
-    vk::DependencyInfo dependency_info_as_build{
-        .memoryBarrierCount = 1,
-        .pMemoryBarriers = &AS_build_barrier,
-    };
-
-    single_time_command_buffer2.pipelineBarrier2(dependency_info_as_build);
+    single_time_cmd_buffer.buildAccelerationStructuresKHR({TLAS_build_geometry_info}, {&TLAS_build_range_info});
 
     // Ray Trace Image
 
@@ -897,10 +889,10 @@ void init_vulkan(GLFWwindow *window) {
     };
     auto ray_trace_image_view = device.createImageView(ray_trace_image_view_create_info);
 
-    layout_transition(single_time_command_buffer2, ray_trace_image, vk::ImageLayout::eUndefined,
+    layout_transition(single_time_cmd_buffer, ray_trace_image, vk::ImageLayout::eUndefined,
                       vk::ImageLayout::eGeneral);
 
-    end_single_time_commands(queue, single_time_command_buffer2);
+    end_single_time_commands(queue, single_time_cmd_buffer);
 
     // Push Descriptors & Pipeline Layout
 
@@ -1128,18 +1120,12 @@ void init_vulkan(GLFWwindow *window) {
     std::vector<vk::raii::Semaphore> render_finished_semaphores;
     std::vector<vk::raii::Fence> render_fences;
 
-    vk::CommandPoolCreateInfo command_pool_create_info{
-        .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
-        .queueFamilyIndex = static_cast<uint32_t>(queue_family_index),
-    };
-    auto command_pool = vk::raii::CommandPool(device, command_pool_create_info);
-
-    vk::CommandBufferAllocateInfo command_buffer_allocate_info{
-        .commandPool = command_pool,
+    vk::CommandBufferAllocateInfo cmd_buffer_allocate_info{
+        .commandPool = cmd_pool,
         .level = vk::CommandBufferLevel::ePrimary,
         .commandBufferCount = frames_in_flight,
     };
-    auto command_buffers = vk::raii::CommandBuffers(device, command_buffer_allocate_info);
+    auto cmd_buffers = vk::raii::CommandBuffers(device, cmd_buffer_allocate_info);
 
     for (size_t i = 0; i < frames_in_flight; ++i) {
         vk::FenceCreateInfo fence_create_info{
@@ -1179,48 +1165,38 @@ void init_vulkan(GLFWwindow *window) {
 
         auto &current_render_finished_semaphore = render_finished_semaphores[image_index];
 
-        auto &render_command_buffer = command_buffers[frame_index];
+        auto &cmd_buffer = cmd_buffers[frame_index];
 
-        render_command_buffer.reset();
-        vk::CommandBufferBeginInfo begin_info{};
-        render_command_buffer.begin(begin_info);
+        cmd_buffer.begin({});
 
-        // Begin
+        cmd_buffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, ray_tracing_pipeline);
+        cmd_buffer.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, pipeline_layout, 0, writes);
+        cmd_buffer.traceRaysKHR(rgen_region, rmiss_region, rchit_region, callable_region,
+                                swapchain_extent.width,
+                                swapchain_extent.height, 1);
 
-        render_command_buffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, ray_tracing_pipeline);
-
-        render_command_buffer.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, pipeline_layout, 0, writes);
-
-        render_command_buffer.traceRaysKHR(rgen_region, rmiss_region, rchit_region, callable_region,
-                                           swapchain_extent.width,
-                                           swapchain_extent.height, 1);
-
-        layout_transition(render_command_buffer, ray_trace_image, vk::ImageLayout::eGeneral,
+        layout_transition(cmd_buffer, ray_trace_image, vk::ImageLayout::eGeneral,
                           vk::ImageLayout::eTransferSrcOptimal);
+        layout_transition(cmd_buffer, current_swapchain_image, vk::ImageLayout::eUndefined,
+                          vk::ImageLayout::eTransferDstOptimal);
 
         vk::ImageCopy copy_region{
             .srcSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
             .dstSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
             .extent = vk::Extent3D{swapchain_extent.width, swapchain_extent.height, 1},
         };
-
-        layout_transition(render_command_buffer, current_swapchain_image, vk::ImageLayout::eUndefined,
-                          vk::ImageLayout::eTransferDstOptimal);
-
-        render_command_buffer.copyImage(
+        cmd_buffer.copyImage(
             ray_trace_image, vk::ImageLayout::eTransferSrcOptimal,
             current_swapchain_image, vk::ImageLayout::eTransferDstOptimal,
             copy_region
         );
 
-        layout_transition(render_command_buffer, current_swapchain_image, vk::ImageLayout::eTransferDstOptimal,
+        layout_transition(cmd_buffer, current_swapchain_image, vk::ImageLayout::eTransferDstOptimal,
                           vk::ImageLayout::ePresentSrcKHR);
-
-        layout_transition(render_command_buffer, ray_trace_image, vk::ImageLayout::eTransferSrcOptimal,
+        layout_transition(cmd_buffer, ray_trace_image, vk::ImageLayout::eTransferSrcOptimal,
                           vk::ImageLayout::eGeneral);
 
-        render_command_buffer.end();
-        // End
+        cmd_buffer.end();
 
         vk::PipelineStageFlags wait_stage = vk::PipelineStageFlagBits::eTopOfPipe;
 
@@ -1230,7 +1206,7 @@ void init_vulkan(GLFWwindow *window) {
             .pWaitDstStageMask = &wait_stage,
 
             .commandBufferCount = 1,
-            .pCommandBuffers = &*render_command_buffer,
+            .pCommandBuffers = &*cmd_buffer,
 
             .signalSemaphoreCount = 1,
             .pSignalSemaphores = &*current_render_finished_semaphore,
