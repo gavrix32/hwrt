@@ -1,15 +1,17 @@
 #include <iostream>
+#include <fstream>
+#include <set>
 
 #define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS 1
 #include <vulkan/vulkan_raii.hpp>
-#include <spdlog/spdlog.h>
+
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
 
 #define GLFW_INCLUDE_VULKAN
-#include <fstream>
-#include <set>
 #include <GLFW/glfw3.h>
+
+#include <spdlog/spdlog.h>
 
 #define WIDTH 800
 #define HEIGHT 600
@@ -24,7 +26,7 @@ constexpr bool enable_validation_layers = false;
 constexpr bool enable_validation_layers = true;
 #endif
 
-std::vector<char> read_file(const std::string &filename) {
+std::vector<char> read_file(const std::string& filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
     if (!file.is_open()) {
@@ -35,7 +37,6 @@ std::vector<char> read_file(const std::string &filename) {
 
     file.seekg(0, std::ios::beg);
     file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
-
     file.close();
 
     return buffer;
@@ -57,10 +58,8 @@ static std::string_view message_type_to_string(vk::DebugUtilsMessageTypeFlagsEXT
 
 static VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(const vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
                                                        const vk::DebugUtilsMessageTypeFlagsEXT type,
-                                                       const vk::DebugUtilsMessengerCallbackDataEXT *p_callback_data,
-                                                       void *) {
+                                                       const vk::DebugUtilsMessengerCallbackDataEXT* p_callback_data, void*) {
     spdlog::log(to_spdlog_level(severity), "[Vulkan {}] {}", message_type_to_string(type), p_callback_data->pMessage);
-
     return vk::False;
 }
 
@@ -89,10 +88,11 @@ std::vector<uint32_t> indices = {
     0, 1, 2,
 };
 
-vk::Extent2D choose_swapchain_extent(GLFWwindow *window, const vk::SurfaceCapabilitiesKHR &capabilities) {
+vk::Extent2D choose_swapchain_extent(GLFWwindow* window, const vk::SurfaceCapabilitiesKHR& capabilities) {
     if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
         return capabilities.currentExtent;
     }
+
     int width, height;
     glfwGetFramebufferSize(window, &width, &height);
 
@@ -113,14 +113,12 @@ vk::Format sRGB_to_UNorm(vk::Format format) {
         case vk::Format::eB8G8R8Srgb: return vk::Format::eB8G8R8Unorm;
         case vk::Format::eR8G8B8A8Srgb: return vk::Format::eR8G8B8A8Unorm;
         case vk::Format::eB8G8R8A8Srgb: return vk::Format::eB8G8R8A8Unorm;
-
         default: return format;
     }
 }
 
-vk::Buffer create_buffer(VmaAllocator allocator,
-                         vk::DeviceSize size, vk::BufferUsageFlags usage,
-                         VmaAllocation &allocation, VmaAllocationCreateFlags allocation_create_flags = 0) {
+vk::Buffer create_buffer(VmaAllocator allocator, vk::DeviceSize size, vk::BufferUsageFlags usage, VmaAllocation& allocation,
+                         VmaAllocationCreateFlags allocation_create_flags = 0) {
     const vk::BufferCreateInfo buffer_create_info = {
         .size = size,
         .usage = usage,
@@ -133,17 +131,15 @@ vk::Buffer create_buffer(VmaAllocator allocator,
     };
 
     VkBuffer buffer;
-    const auto result = vmaCreateBuffer(allocator, buffer_create_info, &allocation_create_info, &buffer, &allocation,
-                                        nullptr);
+    const auto result = vmaCreateBuffer(allocator, buffer_create_info, &allocation_create_info, &buffer, &allocation, nullptr);
 
     if (result != VK_SUCCESS) {
         spdlog::error("vmaCreateBuffer failed: {}", vk::to_string(static_cast<vk::Result>(result)));
     }
-
     return buffer;
 }
 
-vk::Image create_image(vk::ImageCreateInfo image_create_info, VmaAllocator allocator, VmaAllocation &allocation,
+vk::Image create_image(vk::ImageCreateInfo image_create_info, VmaAllocator allocator, VmaAllocation& allocation,
                        VmaAllocationCreateFlags allocation_create_flags = 0) {
     const VmaAllocationCreateInfo allocation_create_info = {
         .flags = allocation_create_flags,
@@ -151,61 +147,52 @@ vk::Image create_image(vk::ImageCreateInfo image_create_info, VmaAllocator alloc
     };
 
     VkImage image;
-    const auto result = vmaCreateImage(allocator, image_create_info, &allocation_create_info, &image, &allocation,
-                                       nullptr);
+    const auto result = vmaCreateImage(allocator, image_create_info, &allocation_create_info, &image, &allocation, nullptr);
 
     if (result != VK_SUCCESS) {
         spdlog::error("vmaCreateImage failed: {}", vk::to_string(static_cast<vk::Result>(result)));
     }
-
     return image;
 }
 
-void layout_transition(vk::raii::CommandBuffer &cmd_buffer, vk::Image image,
-                       vk::ImageLayout old_layout, vk::ImageLayout new_layout) {
+void layout_transition(const vk::raii::CommandBuffer& cmd_buffer, vk::Image image, vk::ImageLayout old_layout,
+                       vk::ImageLayout new_layout) {
     vk::AccessFlags2 srcAccessMask;
     vk::AccessFlags2 dstAccessMask;
     vk::PipelineStageFlags2 srcStageMask;
     vk::PipelineStageFlags2 dstStageMask;
 
-    if (old_layout == vk::ImageLayout::eUndefined &&
-        new_layout == vk::ImageLayout::eTransferDstOptimal) {
+    if (old_layout == vk::ImageLayout::eUndefined && new_layout == vk::ImageLayout::eTransferDstOptimal) {
         srcAccessMask = vk::AccessFlagBits2::eNone;
         dstAccessMask = vk::AccessFlagBits2::eTransferWrite;
         srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe;
         dstStageMask = vk::PipelineStageFlagBits2::eTransfer;
-    } else if (old_layout == vk::ImageLayout::eUndefined &&
-               new_layout == vk::ImageLayout::eTransferSrcOptimal) {
+    } else if (old_layout == vk::ImageLayout::eUndefined && new_layout == vk::ImageLayout::eTransferSrcOptimal) {
         srcAccessMask = vk::AccessFlagBits2::eNone;
         dstAccessMask = vk::AccessFlagBits2::eTransferRead;
         srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe;
         dstStageMask = vk::PipelineStageFlagBits2::eTransfer;
-    } else if (old_layout == vk::ImageLayout::eTransferDstOptimal &&
-               new_layout == vk::ImageLayout::eShaderReadOnlyOptimal) {
+    } else if (old_layout == vk::ImageLayout::eTransferDstOptimal && new_layout == vk::ImageLayout::eShaderReadOnlyOptimal) {
         srcAccessMask = vk::AccessFlagBits2::eTransferWrite;
         dstAccessMask = vk::AccessFlagBits2::eShaderRead;
         srcStageMask = vk::PipelineStageFlagBits2::eTransfer;
         dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader;
-    } else if (old_layout == vk::ImageLayout::eUndefined &&
-               new_layout == vk::ImageLayout::eGeneral) {
+    } else if (old_layout == vk::ImageLayout::eUndefined && new_layout == vk::ImageLayout::eGeneral) {
         srcAccessMask = vk::AccessFlagBits2::eNone;
         dstAccessMask = vk::AccessFlagBits2::eShaderWrite;
         srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe;
         dstStageMask = vk::PipelineStageFlagBits2::eRayTracingShaderKHR;
-    } else if (old_layout == vk::ImageLayout::eGeneral &&
-               new_layout == vk::ImageLayout::eTransferSrcOptimal) {
+    } else if (old_layout == vk::ImageLayout::eGeneral && new_layout == vk::ImageLayout::eTransferSrcOptimal) {
         srcAccessMask = vk::AccessFlagBits2::eShaderWrite;
         dstAccessMask = vk::AccessFlagBits2::eTransferRead;
         srcStageMask = vk::PipelineStageFlagBits2::eRayTracingShaderKHR;
         dstStageMask = vk::PipelineStageFlagBits2::eTransfer;
-    } else if (old_layout == vk::ImageLayout::eTransferDstOptimal &&
-               new_layout == vk::ImageLayout::ePresentSrcKHR) {
+    } else if (old_layout == vk::ImageLayout::eTransferDstOptimal && new_layout == vk::ImageLayout::ePresentSrcKHR) {
         srcAccessMask = vk::AccessFlagBits2::eTransferWrite;
         dstAccessMask = vk::AccessFlagBits2::eNone;
         srcStageMask = vk::PipelineStageFlagBits2::eTransfer;
         dstStageMask = vk::PipelineStageFlagBits2::eBottomOfPipe;
-    } else if (old_layout == vk::ImageLayout::eTransferSrcOptimal &&
-               new_layout == vk::ImageLayout::eGeneral) {
+    } else if (old_layout == vk::ImageLayout::eTransferSrcOptimal && new_layout == vk::ImageLayout::eGeneral) {
         srcAccessMask = vk::AccessFlagBits2::eTransferRead;
         dstAccessMask = vk::AccessFlagBits2::eShaderWrite;
         srcStageMask = vk::PipelineStageFlagBits2::eTransfer;
@@ -240,8 +227,7 @@ void layout_transition(vk::raii::CommandBuffer &cmd_buffer, vk::Image image,
     cmd_buffer.pipelineBarrier2(dependency_info);
 }
 
-vk::raii::CommandBuffer begin_single_time_commands(const vk::raii::Device &device,
-                                                   const vk::raii::CommandPool &cmd_pool) {
+vk::raii::CommandBuffer begin_single_time_commands(const vk::raii::Device& device, const vk::raii::CommandPool& cmd_pool) {
     vk::CommandBufferAllocateInfo alloc_info{
         .commandPool = *cmd_pool,
         .level = vk::CommandBufferLevel::ePrimary,
@@ -257,7 +243,7 @@ vk::raii::CommandBuffer begin_single_time_commands(const vk::raii::Device &devic
     return cmd_buffer;
 }
 
-void end_single_time_commands(const vk::raii::Queue &queue, vk::raii::CommandBuffer &cmd_buffer) {
+void end_single_time_commands(const vk::raii::Queue& queue, const vk::raii::CommandBuffer& cmd_buffer) {
     cmd_buffer.end();
 
     vk::SubmitInfo submit_info{
@@ -272,33 +258,32 @@ uint32_t round_up(uint32_t value, uint32_t alignment) {
     return (value + alignment - 1) / alignment * alignment;
 }
 
-void init_vulkan(GLFWwindow *window) {
+void init_vulkan(GLFWwindow* window) {
     const vk::raii::Context context;
 
     // Check layers
-    std::vector<char const *> required_layers;
+    std::vector<char const*> required_layers;
     if (enable_validation_layers) {
         required_layers.assign(validation_layers.begin(), validation_layers.end());
     }
     auto available_layers = context.enumerateInstanceLayerProperties();
 
-    for (auto &required_layer: required_layers) {
+    for (auto& required_layer : required_layers) {
         bool found = false;
-        for (auto &available_layer: available_layers) {
+        for (auto& available_layer : available_layers) {
             if (std::strcmp(available_layer.layerName, required_layer) == 0) {
                 found = true;
                 break;
             }
         }
         if (!found) {
-            throw std::runtime_error(
-                "Required instance layer not supported: " + std::string(required_layer));
+            throw std::runtime_error("Required instance layer not supported: " + std::string(required_layer));
         }
     }
 
     // Check extensions
     uint32_t required_extension_count = 0;
-    const char **required_instance_extensions_data = glfwGetRequiredInstanceExtensions(&required_extension_count);
+    const char** required_instance_extensions_data = glfwGetRequiredInstanceExtensions(&required_extension_count);
 
     std::vector required_instance_extensions(required_instance_extensions_data,
                                              required_instance_extensions_data + required_extension_count);
@@ -309,17 +294,16 @@ void init_vulkan(GLFWwindow *window) {
 
     auto available_extensions = context.enumerateInstanceExtensionProperties();
 
-    for (auto &extension: required_instance_extensions) {
+    for (auto& extension : required_instance_extensions) {
         bool found = false;
-        for (auto &available_extension: available_extensions) {
+        for (auto& available_extension : available_extensions) {
             if (std::strcmp(available_extension.extensionName, extension) == 0) {
                 found = true;
                 break;
             }
         }
         if (!found) {
-            throw std::runtime_error(
-                "Required extension not supported: " + std::string(extension));
+            throw std::runtime_error("Required extension not supported: " + std::string(extension));
         }
     }
 
@@ -329,10 +313,11 @@ void init_vulkan(GLFWwindow *window) {
     };
 
     std::vector validation_features_enabled_list{
-        //// vk::ValidationFeatureEnableEXT::eDebugPrintf,
         vk::ValidationFeatureEnableEXT::eBestPractices,
         vk::ValidationFeatureEnableEXT::eSynchronizationValidation,
         // vk::ValidationFeatureEnableEXT::eGpuAssisted,
+        // vk::ValidationFeatureEnableEXT::eGpuAssistedReserveBindingSlot,
+        // vk::ValidationFeatureEnableEXT::eDebugPrintf,
     };
 
     vk::ValidationFeaturesEXT validation_features{
@@ -354,7 +339,7 @@ void init_vulkan(GLFWwindow *window) {
 
     const auto instance = vk::raii::Instance(context, instance_create_info);
 
-    vk::raii::DebugUtilsMessengerEXT debug_messenger{nullptr};
+    vk::raii::DebugUtilsMessengerEXT _debug_messenger{nullptr};
 
     if (enable_validation_layers) {
         vk::DebugUtilsMessageSeverityFlagsEXT severity_flags(
@@ -365,17 +350,15 @@ void init_vulkan(GLFWwindow *window) {
             vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance |
             vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation);
 
-        auto debug_utils_messenger_create_info_EXT = vk::DebugUtilsMessengerCreateInfoEXT{
+        vk::DebugUtilsMessengerCreateInfoEXT debug_utils_messenger_create_info_EXT{
             .messageSeverity = severity_flags,
             .messageType = message_type_flags,
             .pfnUserCallback = &debug_callback
         };
-
-        debug_messenger = instance.createDebugUtilsMessengerEXT(
-            debug_utils_messenger_create_info_EXT);
+        _debug_messenger = instance.createDebugUtilsMessengerEXT(debug_utils_messenger_create_info_EXT);
     }
 
-    std::vector<const char *> required_device_extensions;
+    std::vector<const char*> required_device_extensions;
     required_device_extensions.push_back(vk::KHRSwapchainExtensionName);
     required_device_extensions.push_back(vk::KHRDeferredHostOperationsExtensionName);
     required_device_extensions.push_back(vk::KHRAccelerationStructureExtensionName);
@@ -391,21 +374,21 @@ void init_vulkan(GLFWwindow *window) {
     }
 
     // Should be in function
-    size_t i = 0;
-    for (const auto &physical_device: physical_devices) {
+    size_t device_idx = 0;
+    for (const auto& physical_device : physical_devices) {
         auto properties = physical_device.getProperties();
         auto available_device_extension_properties = physical_device.enumerateDeviceExtensionProperties();
 
         auto type = get_physical_device_type_name(properties.deviceType);
-        spdlog::info("GPU {}: {} ({})", i, properties.deviceName.data(), type);
+        spdlog::info("GPU {}: {} ({})", device_idx, properties.deviceName.data(), type);
 
         std::set<std::string> available_device_extension_names;
-        for (auto extension_property: available_device_extension_properties) {
+        for (auto extension_property : available_device_extension_properties) {
             available_device_extension_names.insert(extension_property.extensionName);
         }
 
         std::set<std::string> missing_device_extension_names;
-        for (const auto &extension_name: required_device_extensions) {
+        for (const auto& extension_name : required_device_extensions) {
             if (!available_device_extension_names.contains(extension_name)) {
                 missing_device_extension_names.insert(extension_name);
             }
@@ -417,19 +400,18 @@ void init_vulkan(GLFWwindow *window) {
             break;
         } else {
             spdlog::error("    Required device extensions missing: ");
-            for (const auto &extension_name: missing_device_extension_names) {
+            for (const auto& extension_name : missing_device_extension_names) {
                 spdlog::error("        - {}", extension_name);
             }
         }
 
-        ++i;
+        ++device_idx;
     }
     if (adapter == nullptr) {
         spdlog::critical("Failed to find a physical device with support for all required extensions");
     }
 
     // Surface
-
     VkSurfaceKHR _surface;
     if (glfwCreateWindowSurface(*instance, window, nullptr, &_surface) != 0) {
         throw std::runtime_error("Failed to create window surface");
@@ -437,13 +419,11 @@ void init_vulkan(GLFWwindow *window) {
     auto surface = vk::raii::SurfaceKHR(instance, _surface);
 
     // Device & Queue
-
     auto queue_family_properties = adapter.getQueueFamilyProperties();
-
     size_t queue_family_index = 0;
 
-    i = 0;
-    for (auto queue_family_property: queue_family_properties) {
+    size_t queue_fam_i = 0;
+    for (auto queue_family_property : queue_family_properties) {
         std::string flag_names;
 
         auto flags = queue_family_property.queueFlags;
@@ -457,17 +437,19 @@ void init_vulkan(GLFWwindow *window) {
         if (flags & vk::QueueFlagBits::eOpticalFlowNV) flag_names += "OpticalFlowNV | ";
         if (flags & vk::QueueFlagBits::eDataGraphARM) flag_names += "DataGraphARM | ";
 
-        auto present_support = adapter.getSurfaceSupportKHR(i, surface);
+        auto present_support = adapter.getSurfaceSupportKHR(queue_fam_i, surface);
 
-        spdlog::debug("queue_family_index: {}, queue_count: {}, present_support: {}, queue_flags: {}", i,
-                      queue_family_property.queueCount, present_support,
+        spdlog::debug("queue_family_index: {}, queue_count: {}, present_support: {}, queue_flags: {}",
+                      queue_fam_i,
+                      queue_family_property.queueCount,
+                      present_support,
                       flag_names);
 
         if (flags & vk::QueueFlagBits::eCompute && (flags & vk::QueueFlagBits::eGraphics)) {
-            queue_family_index = i;
+            queue_family_index = queue_fam_i;
         }
 
-        ++i;
+        ++queue_fam_i;
     }
     spdlog::info("Selected queue family {}", queue_family_index);
 
@@ -475,17 +457,17 @@ void init_vulkan(GLFWwindow *window) {
         .bufferDeviceAddress = vk::True,
     };
 
-    vk::PhysicalDeviceAccelerationStructureFeaturesKHR acceleration_structure_features{
-        .pNext = buffer_device_address_features,
-        .accelerationStructure = vk::True,
-    };
+    vk::PhysicalDeviceAccelerationStructureFeaturesKHR
+        acceleration_structure_features{
+            .pNext = buffer_device_address_features,
+            .accelerationStructure = vk::True,
+        };
 
-    vk::PhysicalDeviceRayTracingPipelineFeaturesKHR ray_tracing_pipeline_features{
-        .pNext = acceleration_structure_features,
-        .rayTracingPipeline = vk::True,
-    };
-
-    // auto features2 = adapter.getFeatures2();
+    vk::PhysicalDeviceRayTracingPipelineFeaturesKHR
+        ray_tracing_pipeline_features{
+            .pNext = acceleration_structure_features,
+            .rayTracingPipeline = vk::True,
+        };
 
     vk::PhysicalDeviceVulkan13Features vulkan13_features{
         .pNext = ray_tracing_pipeline_features,
@@ -496,10 +478,6 @@ void init_vulkan(GLFWwindow *window) {
         .pNext = vulkan13_features,
         .pushDescriptor = vk::True,
     };
-
-    // vulkan13_features.dynamicRendering = vk::True;
-
-    // features2.pNext = &vulkan13_features;
 
     float queue_priority = 1.0f;
     vk::DeviceQueueCreateInfo device_queue_create_info{
@@ -520,15 +498,14 @@ void init_vulkan(GLFWwindow *window) {
     auto queue = vk::raii::Queue(device, queue_family_index, 0);
 
     // Swapchain
-
     auto surface_capabilities = adapter.getSurfaceCapabilitiesKHR(*surface);
     auto swapchain_extent = choose_swapchain_extent(window, surface_capabilities);
 
     vk::SurfaceFormatKHR swapchain_surface_format;
     auto available_formats = adapter.getSurfaceFormatsKHR(*surface);
-    for (const auto &available_format: available_formats) {
-        if (available_format.format == vk::Format::eB8G8R8A8Srgb && available_format.colorSpace ==
-            vk::ColorSpaceKHR::eSrgbNonlinear) {
+    for (const auto& available_format : available_formats) {
+        if (available_format.format == vk::Format::eB8G8R8A8Srgb &&
+            available_format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
             swapchain_surface_format = available_format;
             break;
         }
@@ -553,17 +530,6 @@ void init_vulkan(GLFWwindow *window) {
     auto swapchain = vk::raii::SwapchainKHR(device, swapchain_create_info);
     std::vector<vk::Image> swapchain_images = swapchain.getImages();
 
-    // vk::ImageViewCreateInfo image_view_create_info{
-    //     .viewType = vk::ImageViewType::e2D,
-    //     .format = swapchain_surface_format.format,
-    //     .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}
-    // };
-    // std::vector<vk::raii::ImageView> swapchain_image_views;
-    // for (auto image: swapchain_images) {
-    //     image_view_create_info.image = image;
-    //     swapchain_image_views.emplace_back(device, image_view_create_info);
-    // }
-
     VmaAllocatorCreateInfo allocator_create_info = {
         .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
         .physicalDevice = static_cast<vk::PhysicalDevice>(adapter),
@@ -572,24 +538,20 @@ void init_vulkan(GLFWwindow *window) {
     };
 
     VmaAllocator allocator;
-
     if (vmaCreateAllocator(&allocator_create_info, &allocator) != VK_SUCCESS) {
         spdlog::error("Failed to create allocator");
     }
 
     VmaAllocation vertex_allocation, index_allocation;
 
-    vk::Buffer vertex_buffer = create_buffer(
-        allocator,
-        sizeof(Vertex) * vertices.size(),
-        vk::BufferUsageFlagBits::eVertexBuffer
-        | vk::BufferUsageFlagBits::eStorageBuffer
-        | vk::BufferUsageFlagBits::eShaderDeviceAddress
-        | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR,
-        vertex_allocation,
-        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
-        | VMA_ALLOCATION_CREATE_MAPPED_BIT
-    );
+    vk::Buffer vertex_buffer = create_buffer(allocator,
+                                             sizeof(Vertex) * vertices.size(),
+                                             vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eStorageBuffer |
+                                             vk::BufferUsageFlagBits::eShaderDeviceAddress |
+                                             vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR,
+                                             vertex_allocation,
+                                             VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                                             VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
     {
         VmaAllocationInfo allocation_info;
@@ -597,17 +559,14 @@ void init_vulkan(GLFWwindow *window) {
         memcpy(allocation_info.pMappedData, vertices.data(), sizeof(Vertex) * vertices.size());
     }
 
-    vk::Buffer index_buffer = create_buffer(
-        allocator,
-        sizeof(uint32_t) * indices.size(),
-        vk::BufferUsageFlagBits::eIndexBuffer
-        | vk::BufferUsageFlagBits::eStorageBuffer
-        | vk::BufferUsageFlagBits::eShaderDeviceAddress
-        | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR,
-        index_allocation,
-        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
-        | VMA_ALLOCATION_CREATE_MAPPED_BIT
-    );
+    vk::Buffer index_buffer = create_buffer(allocator,
+                                            sizeof(uint32_t) * indices.size(),
+                                            vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eStorageBuffer |
+                                            vk::BufferUsageFlagBits::eShaderDeviceAddress |
+                                            vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR,
+                                            index_allocation,
+                                            VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                                            VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
     {
         VmaAllocationInfo allocation_info;
@@ -661,20 +620,18 @@ void init_vulkan(GLFWwindow *window) {
     std::vector<uint32_t> BLAS_max_primitive_counts(1);
     BLAS_max_primitive_counts[0] = BLAS_build_range_info.primitiveCount;
 
-    auto BLAS_build_sizes_info = device.getAccelerationStructureBuildSizesKHR(
-        vk::AccelerationStructureBuildTypeKHR::eDevice, BLAS_build_geometry_info,
-        BLAS_max_primitive_counts);
+    auto BLAS_build_sizes_info = device.getAccelerationStructureBuildSizesKHR(vk::AccelerationStructureBuildTypeKHR::eDevice,
+                                                                              BLAS_build_geometry_info,
+                                                                              BLAS_max_primitive_counts);
 
     VmaAllocation BLAS_allocation;
 
-    auto BLAS_buffer = create_buffer(
-        allocator,
-        BLAS_build_sizes_info.accelerationStructureSize,
-        vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR
-        | vk::BufferUsageFlagBits::eShaderDeviceAddress,
-        BLAS_allocation,
-        0
-    );
+    auto BLAS_buffer = create_buffer(allocator,
+                                     BLAS_build_sizes_info.accelerationStructureSize,
+                                     vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR |
+                                     vk::BufferUsageFlagBits::eShaderDeviceAddress,
+                                     BLAS_allocation,
+                                     0);
 
     vk::AccelerationStructureCreateInfoKHR BLAS_create_info{
         .buffer = BLAS_buffer,
@@ -698,14 +655,12 @@ void init_vulkan(GLFWwindow *window) {
 
     VmaAllocation BLAS_scratch_allocation;
 
-    auto BLAS_scratch_buffer = create_buffer(
-        allocator,
-        BLAS_build_sizes_info.buildScratchSize,
-        vk::BufferUsageFlagBits::eStorageBuffer
-        | vk::BufferUsageFlagBits::eShaderDeviceAddress,
-        BLAS_scratch_allocation,
-        VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT
-    );
+    auto BLAS_scratch_buffer = create_buffer(allocator,
+                                             BLAS_build_sizes_info.buildScratchSize,
+                                             vk::BufferUsageFlagBits::eStorageBuffer |
+                                             vk::BufferUsageFlagBits::eShaderDeviceAddress,
+                                             BLAS_scratch_allocation,
+                                             VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
 
     vk::BufferDeviceAddressInfo BLAS_scratch_buffer_device_address_info{
         .buffer = BLAS_scratch_buffer,
@@ -759,15 +714,13 @@ void init_vulkan(GLFWwindow *window) {
 
     VmaAllocation BLAS_instance_allocation;
 
-    auto BLAS_instance_buffer = create_buffer(
-        allocator,
-        sizeof(vk::AccelerationStructureInstanceKHR),
-        vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
-        | vk::BufferUsageFlagBits::eShaderDeviceAddress,
-        BLAS_instance_allocation,
-        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
-        | VMA_ALLOCATION_CREATE_MAPPED_BIT
-    );
+    auto BLAS_instance_buffer = create_buffer(allocator,
+                                              sizeof(vk::AccelerationStructureInstanceKHR),
+                                              vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR |
+                                              vk::BufferUsageFlagBits::eShaderDeviceAddress,
+                                              BLAS_instance_allocation,
+                                              VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                                              VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
     {
         VmaAllocationInfo allocation_info;
@@ -808,20 +761,18 @@ void init_vulkan(GLFWwindow *window) {
     std::vector<uint32_t> TLAS_max_primitive_counts(1);
     TLAS_max_primitive_counts[0] = TLAS_build_range_info.primitiveCount;
 
-    auto TLAS_build_sizes_info = device.getAccelerationStructureBuildSizesKHR(
-        vk::AccelerationStructureBuildTypeKHR::eDevice, TLAS_build_geometry_info,
-        TLAS_max_primitive_counts);
+    auto TLAS_build_sizes_info = device.getAccelerationStructureBuildSizesKHR(vk::AccelerationStructureBuildTypeKHR::eDevice,
+                                                                              TLAS_build_geometry_info,
+                                                                              TLAS_max_primitive_counts);
 
     VmaAllocation TLAS_allocation;
 
-    auto TLAS_buffer = create_buffer(
-        allocator,
-        TLAS_build_sizes_info.accelerationStructureSize,
-        vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR/*
-        | vk::BufferUsageFlagBits::eShaderDeviceAddress*/,
-        TLAS_allocation,
-        0
-    );
+    auto TLAS_buffer = create_buffer(allocator,
+                                     TLAS_build_sizes_info.accelerationStructureSize,
+                                     vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR
+                                     /*    | vk::BufferUsageFlagBits::eShaderDeviceAddress*/,
+                                     TLAS_allocation,
+                                     0);
 
     vk::AccelerationStructureCreateInfoKHR TLAS_create_info{
         .buffer = TLAS_buffer,
@@ -835,14 +786,12 @@ void init_vulkan(GLFWwindow *window) {
 
     VmaAllocation TLAS_scratch_allocation;
 
-    auto TLAS_scratch_buffer = create_buffer(
-        allocator,
-        TLAS_build_sizes_info.buildScratchSize,
-        vk::BufferUsageFlagBits::eStorageBuffer
-        | vk::BufferUsageFlagBits::eShaderDeviceAddress,
-        TLAS_scratch_allocation,
-        VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT
-    );
+    auto TLAS_scratch_buffer = create_buffer(allocator,
+                                             TLAS_build_sizes_info.buildScratchSize,
+                                             vk::BufferUsageFlagBits::eStorageBuffer |
+                                             vk::BufferUsageFlagBits::eShaderDeviceAddress,
+                                             TLAS_scratch_allocation,
+                                             VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
 
     vk::BufferDeviceAddressInfo TLAS_scratch_buffer_device_address_info{
         .buffer = TLAS_scratch_buffer,
@@ -861,11 +810,7 @@ void init_vulkan(GLFWwindow *window) {
     vk::ImageCreateInfo ray_trace_image_create_info{
         .imageType = vk::ImageType::e2D,
         .format = sRGB_to_UNorm(swapchain_surface_format.format),
-        .extent = vk::Extent3D{
-            swapchain_extent.width,
-            swapchain_extent.height,
-            1
-        },
+        .extent = vk::Extent3D{swapchain_extent.width, swapchain_extent.height, 1},
         .mipLevels = 1,
         .arrayLayers = 1,
         .samples = vk::SampleCountFlagBits::e1,
@@ -889,8 +834,7 @@ void init_vulkan(GLFWwindow *window) {
     };
     auto ray_trace_image_view = device.createImageView(ray_trace_image_view_create_info);
 
-    layout_transition(single_time_cmd_buffer, ray_trace_image, vk::ImageLayout::eUndefined,
-                      vk::ImageLayout::eGeneral);
+    layout_transition(single_time_cmd_buffer, ray_trace_image, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
 
     end_single_time_commands(queue, single_time_cmd_buffer);
 
@@ -898,23 +842,21 @@ void init_vulkan(GLFWwindow *window) {
 
     std::vector<vk::DescriptorSetLayoutBinding> bindings;
 
-    bindings.push_back(
-        vk::DescriptorSetLayoutBinding{
-            .binding = 0,
-            .descriptorType = vk::DescriptorType::eAccelerationStructureKHR,
-            .descriptorCount = 1,
-            .stageFlags = vk::ShaderStageFlagBits::eAll,
-        }
-    );
+    vk::DescriptorSetLayoutBinding AS_binding{
+        .binding = 0,
+        .descriptorType = vk::DescriptorType::eAccelerationStructureKHR,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eAll,
+    };
+    bindings.push_back(AS_binding);
 
-    bindings.push_back(
-        vk::DescriptorSetLayoutBinding{
-            .binding = 1,
-            .descriptorType = vk::DescriptorType::eStorageImage,
-            .descriptorCount = 1,
-            .stageFlags = vk::ShaderStageFlagBits::eAll,
-        }
-    );
+    vk::DescriptorSetLayoutBinding image_binding{
+        .binding = 1,
+        .descriptorType = vk::DescriptorType::eStorageImage,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eAll,
+    };
+    bindings.push_back(image_binding);
 
     vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_create_info{
         .flags = vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptor,
@@ -962,21 +904,21 @@ void init_vulkan(GLFWwindow *window) {
     auto ray_gen_shader_code = read_file("../src/shaders/spirv/raytrace.rgen.spv");
     vk::ShaderModuleCreateInfo ray_gen_shader_module_create_info{
         .codeSize = ray_gen_shader_code.size() * sizeof(char),
-        .pCode = reinterpret_cast<const uint32_t *>(ray_gen_shader_code.data()),
+        .pCode = reinterpret_cast<const uint32_t*>(ray_gen_shader_code.data()),
     };
     auto ray_gen_shader_module = device.createShaderModule(ray_gen_shader_module_create_info);
 
     auto ray_miss_shader_code = read_file("../src/shaders/spirv/raytrace.rmiss.spv");
     vk::ShaderModuleCreateInfo ray_miss_shader_module_create_info{
         .codeSize = ray_miss_shader_code.size() * sizeof(char),
-        .pCode = reinterpret_cast<const uint32_t *>(ray_miss_shader_code.data()),
+        .pCode = reinterpret_cast<const uint32_t*>(ray_miss_shader_code.data()),
     };
     auto ray_miss_shader_module = device.createShaderModule(ray_miss_shader_module_create_info);
 
     auto closest_hit_shader_code = read_file("../src/shaders/spirv/raytrace.rchit.spv");
     vk::ShaderModuleCreateInfo closest_hit_shader_module_create_info{
         .codeSize = closest_hit_shader_code.size() * sizeof(char),
-        .pCode = reinterpret_cast<const uint32_t *>(closest_hit_shader_code.data()),
+        .pCode = reinterpret_cast<const uint32_t*>(closest_hit_shader_code.data()),
     };
     auto closest_hit_shader_module = device.createShaderModule(closest_hit_shader_module_create_info);
 
@@ -1027,9 +969,8 @@ void init_vulkan(GLFWwindow *window) {
     // Shader Binding Table
 
     vk::StructureChain<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>
-            ray_tracing_pipeline_properties_chain =
-                    adapter.getProperties2<vk::PhysicalDeviceProperties2,
-                        vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
+        ray_tracing_pipeline_properties_chain =
+            adapter.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
 
     auto ray_tracing_pipeline_properties = ray_tracing_pipeline_properties_chain.get<
         vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
@@ -1044,24 +985,16 @@ void init_vulkan(GLFWwindow *window) {
     std::vector<uint8_t> shader_handles;
     shader_handles.reserve(data_size);
 
-    PFN_vkGetRayTracingShaderGroupHandlesKHR pfn_vkGetRayTracingShaderGroupHandlesKHR;
+    shader_handles = ray_tracing_pipeline.getRayTracingShaderGroupHandlesKHR<uint8_t>(0, group_count, data_size);
 
-    pfn_vkGetRayTracingShaderGroupHandlesKHR =
-            reinterpret_cast<PFN_vkGetRayTracingShaderGroupHandlesKHR>(vkGetDeviceProcAddr(
-                *device,
-                "vkGetRayTracingShaderGroupHandlesKHR"
-            ));
-
-    (void) pfn_vkGetRayTracingShaderGroupHandlesKHR(*device, *ray_tracing_pipeline, 0, group_count, data_size,
-                                                    shader_handles.data());
-
-    auto align_up = [](uint32_t size, uint32_t alignment) { return (size + alignment - 1) & ~(alignment - 1); };
+    auto align_up = [](uint32_t size, uint32_t alignment) {
+        return (size + alignment - 1) & ~(alignment - 1);
+    };
     uint32_t rgen_size = align_up(handle_size, handle_alignment);
     uint32_t rmiss_size = align_up(handle_size, handle_alignment);
     uint32_t rchit_size = align_up(handle_size, handle_alignment);
     uint32_t callable_size = 0;
 
-    uint32_t rgen_offset = 0;
     uint32_t rmiss_offset = align_up(rgen_size, base_alignment);
     uint32_t rchit_offset = align_up(rmiss_offset + rmiss_size, base_alignment);
     uint32_t callable_offset = align_up(rchit_offset + rchit_size, base_alignment);
@@ -1071,49 +1004,44 @@ void init_vulkan(GLFWwindow *window) {
     vk::StridedDeviceAddressRegionKHR rgen_region{};
     vk::StridedDeviceAddressRegionKHR rmiss_region{};
     vk::StridedDeviceAddressRegionKHR rchit_region{};
-    vk::StridedDeviceAddressRegionKHR callable_region{};
 
-    VmaAllocation shader_binding_table_allocation;
+    VmaAllocation SBT_allocation;
 
-    vk::Buffer shader_binding_table_buffer = create_buffer(
-        allocator,
-        buffer_size,
-        vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eShaderBindingTableKHR,
-        shader_binding_table_allocation,
-        VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
-        | VMA_ALLOCATION_CREATE_MAPPED_BIT
-    );
+    vk::Buffer SBT_buffer = create_buffer(allocator,
+                                          buffer_size,
+                                          vk::BufferUsageFlagBits::eShaderDeviceAddress |
+                                          vk::BufferUsageFlagBits::eShaderBindingTableKHR,
+                                          SBT_allocation,
+                                          VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
     {
-        vk::BufferDeviceAddressInfo shader_binding_table_buffer_address_info{
-            .buffer = shader_binding_table_buffer,
+        uint32_t rgen_offset = 0;
+
+        vk::BufferDeviceAddressInfo SBT_buffer_address_info{
+            .buffer = SBT_buffer,
         };
-        vk::DeviceAddress shader_binding_table_address = device.getBufferAddress(
-            shader_binding_table_buffer_address_info);
+        vk::DeviceAddress SBT_address = device.getBufferAddress(
+            SBT_buffer_address_info);
 
         VmaAllocationInfo allocation_info;
-        vmaGetAllocationInfo(allocator, shader_binding_table_allocation, &allocation_info);
+        vmaGetAllocationInfo(allocator, SBT_allocation, &allocation_info);
 
-        auto *p_data = static_cast<uint8_t *>(allocation_info.pMappedData);
+        auto* p_data = static_cast<uint8_t*>(allocation_info.pMappedData);
 
         memcpy(p_data + rgen_offset, shader_handles.data() + 0 * handle_size, handle_size);
-        rgen_region.deviceAddress = shader_binding_table_address + rgen_offset;
+        rgen_region.deviceAddress = SBT_address + rgen_offset;
         rgen_region.stride = rgen_size;
         rgen_region.size = rgen_size;
 
         memcpy(p_data + rmiss_offset, shader_handles.data() + 1 * handle_size, handle_size);
-        rmiss_region.deviceAddress = shader_binding_table_address + rmiss_offset;
+        rmiss_region.deviceAddress = SBT_address + rmiss_offset;
         rmiss_region.stride = rmiss_size;
         rmiss_region.size = rmiss_size;
 
         memcpy(p_data + rchit_offset, shader_handles.data() + 2 * handle_size, handle_size);
-        rchit_region.deviceAddress = shader_binding_table_address + rchit_offset;
+        rchit_region.deviceAddress = SBT_address + rchit_offset;
         rchit_region.stride = rchit_size;
         rchit_region.size = rchit_size;
-
-        callable_region.deviceAddress = 0;
-        callable_region.stride = 0;
-        callable_region.size = 0;
     }
 
     std::vector<vk::raii::Semaphore> image_available_semaphores;
@@ -1152,7 +1080,7 @@ void init_vulkan(GLFWwindow *window) {
 
         uint32_t image_index;
 
-        auto &current_image_available_semaphore = image_available_semaphores[frame_index];
+        auto& current_image_available_semaphore = image_available_semaphores[frame_index];
 
         vk::AcquireNextImageInfoKHR acquire_info{
             .swapchain = swapchain,
@@ -1161,40 +1089,34 @@ void init_vulkan(GLFWwindow *window) {
             .deviceMask = 1,
         };
         image_index = device.acquireNextImage2KHR(acquire_info).value;
-        auto current_swapchain_image = swapchain_images[image_index];
+        auto swapchain_image = swapchain_images[image_index];
 
-        auto &current_render_finished_semaphore = render_finished_semaphores[image_index];
+        auto& current_render_finished_semaphore = render_finished_semaphores[image_index];
 
-        auto &cmd_buffer = cmd_buffers[frame_index];
+        auto& cmd_buffer = cmd_buffers[frame_index];
 
         cmd_buffer.begin({});
-
         cmd_buffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, ray_tracing_pipeline);
         cmd_buffer.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, pipeline_layout, 0, writes);
-        cmd_buffer.traceRaysKHR(rgen_region, rmiss_region, rchit_region, callable_region,
-                                swapchain_extent.width,
-                                swapchain_extent.height, 1);
+        cmd_buffer.traceRaysKHR(rgen_region, rmiss_region, rchit_region, {}, WIDTH, HEIGHT, 1);
 
-        layout_transition(cmd_buffer, ray_trace_image, vk::ImageLayout::eGeneral,
-                          vk::ImageLayout::eTransferSrcOptimal);
-        layout_transition(cmd_buffer, current_swapchain_image, vk::ImageLayout::eUndefined,
-                          vk::ImageLayout::eTransferDstOptimal);
+        layout_transition(cmd_buffer, ray_trace_image, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal);
+        layout_transition(cmd_buffer, swapchain_image, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
 
         vk::ImageCopy copy_region{
             .srcSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
             .dstSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
             .extent = vk::Extent3D{swapchain_extent.width, swapchain_extent.height, 1},
         };
-        cmd_buffer.copyImage(
-            ray_trace_image, vk::ImageLayout::eTransferSrcOptimal,
-            current_swapchain_image, vk::ImageLayout::eTransferDstOptimal,
-            copy_region
-        );
 
-        layout_transition(cmd_buffer, current_swapchain_image, vk::ImageLayout::eTransferDstOptimal,
-                          vk::ImageLayout::ePresentSrcKHR);
-        layout_transition(cmd_buffer, ray_trace_image, vk::ImageLayout::eTransferSrcOptimal,
-                          vk::ImageLayout::eGeneral);
+        cmd_buffer.copyImage(ray_trace_image,
+                             vk::ImageLayout::eTransferSrcOptimal,
+                             swapchain_image,
+                             vk::ImageLayout::eTransferDstOptimal,
+                             copy_region);
+
+        layout_transition(cmd_buffer, swapchain_image, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::ePresentSrcKHR);
+        layout_transition(cmd_buffer, ray_trace_image, vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eGeneral);
 
         cmd_buffer.end();
 
@@ -1236,8 +1158,7 @@ void init_vulkan(GLFWwindow *window) {
         if (elapsed_time.count() >= 1.0) {
             double fps = static_cast<double>(frame_count) / elapsed_time.count();
 
-            spdlog::info("{:.0f} fps ({:.2f} ms)",
-                         fps, 1000.0 / fps);
+            spdlog::info("{:.0f} fps ({:.2f} ms)", fps, 1000.0 / fps);
 
             frame_count = 0;
             last_update_time = current_time;
@@ -1251,7 +1172,7 @@ void init_vulkan(GLFWwindow *window) {
     device.waitIdle();
 
     vmaDestroyImage(allocator, ray_trace_image, ray_trace_image_allocation);
-    vmaDestroyBuffer(allocator, shader_binding_table_buffer, shader_binding_table_allocation);
+    vmaDestroyBuffer(allocator, SBT_buffer, SBT_allocation);
     vmaDestroyBuffer(allocator, TLAS_scratch_buffer, TLAS_scratch_allocation);
     vmaDestroyBuffer(allocator, TLAS_buffer, TLAS_allocation);
     vmaDestroyBuffer(allocator, BLAS_instance_buffer, BLAS_instance_allocation);
@@ -1273,8 +1194,9 @@ int main() {
     glfwInit();
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-    GLFWwindow *window = glfwCreateWindow(800, 600, "HWRT", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "HWRT", nullptr, nullptr);
 
     if (!window) {
         spdlog::error("Failed to create GLFW window");
