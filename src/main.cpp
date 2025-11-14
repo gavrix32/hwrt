@@ -86,7 +86,7 @@ vk::Extent2D choose_swapchain_extent(GLFWwindow* window, const vk::SurfaceCapabi
     };
 }
 
-vk::Format sRGB_to_UNorm(vk::Format format) {
+vk::Format sRGB_to_UNorm(const vk::Format format) {
     switch (format) {
         case vk::Format::eR8Srgb: return vk::Format::eR8Unorm;
         case vk::Format::eR8G8Srgb: return vk::Format::eR8G8Unorm;
@@ -235,7 +235,7 @@ void end_single_time_commands(const vk::raii::Queue& queue, const vk::raii::Comm
     queue.waitIdle();
 }
 
-uint32_t round_up(uint32_t value, uint32_t alignment) {
+uint32_t round_up(const uint32_t value, const uint32_t alignment) {
     return (value + alignment - 1) / alignment * alignment;
 }
 
@@ -247,8 +247,6 @@ void init_vulkan(GLFWwindow* window) {
     required_device_extensions.push_back(vk::KHRDeferredHostOperationsExtensionName);
     required_device_extensions.push_back(vk::KHRAccelerationStructureExtensionName);
     required_device_extensions.push_back(vk::KHRRayTracingPipelineExtensionName);
-    // required_device_extensions.push_back(vk::KHRPushDescriptorExtensionName);
-    // required_device_extensions.push_back(vk::KHRDynamicRenderingExtensionName);
 
     vk::raii::PhysicalDevice adapter = nullptr;
 

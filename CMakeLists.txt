@@ -12,6 +12,7 @@ add_subdirectory(external/vma)
 add_executable(hwrt
         src/main.cpp
         src/vulkan/instance.cpp
+        src/vulkan/utils.h
 )
 
 target_link_libraries(hwrt PRIVATE
