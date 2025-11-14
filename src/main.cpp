@@ -44,27 +44,6 @@ std::vector<char> read_file(const std::string& filename) {
     return buffer;
 }
 
-static spdlog::level::level_enum to_spdlog_level(const vk::DebugUtilsMessageSeverityFlagBitsEXT severity) {
-    if (severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eError) return spdlog::level::err;
-    if (severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) return spdlog::level::warn;
-    if (severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo) return spdlog::level::info;
-    return spdlog::level::debug;
-}
-
-static std::string_view message_type_to_string(vk::DebugUtilsMessageTypeFlagsEXT type) {
-    if (type & vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation) return "VALIDATION";
-    if (type & vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance) return "PERFORMANCE";
-    if (type & vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral) return "GENERAL";
-    return "UNKNOWN";
-}
-
-static VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(const vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
-                                                       const vk::DebugUtilsMessageTypeFlagsEXT type,
-                                                       const vk::DebugUtilsMessengerCallbackDataEXT* p_callback_data, void*) {
-    spdlog::log(to_spdlog_level(severity), "[Vulkan {}] {}", message_type_to_string(type), p_callback_data->pMessage);
-    return vk::False;
-}
-
 std::string_view get_physical_device_type_name(const vk::PhysicalDeviceType type) {
     switch (type) {
         case vk::PhysicalDeviceType::eDiscreteGpu: return "discrete";
@@ -262,25 +241,6 @@ uint32_t round_up(uint32_t value, uint32_t alignment) {
 
 void init_vulkan(GLFWwindow* window) {
     auto instance = Instance(enable_validation_layers);
-
-    vk::raii::DebugUtilsMessengerEXT _debug_messenger{nullptr};
-
-    if (enable_validation_layers) {
-        vk::DebugUtilsMessageSeverityFlagsEXT severity_flags(
-            vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
-            vk::DebugUtilsMessageSeverityFlagBitsEXT::eError);
-
-        vk::DebugUtilsMessageTypeFlagsEXT message_type_flags(
-            vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance |
-            vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation);
-
-        vk::DebugUtilsMessengerCreateInfoEXT debug_utils_messenger_create_info_EXT{
-            .messageSeverity = severity_flags,
-            .messageType = message_type_flags,
-            .pfnUserCallback = &debug_callback
-        };
-        _debug_messenger = instance.get().createDebugUtilsMessengerEXT(debug_utils_messenger_create_info_EXT);
-    }
 
     std::vector<const char*> required_device_extensions;
     required_device_extensions.push_back(vk::KHRSwapchainExtensionName);
