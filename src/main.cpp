@@ -13,6 +13,8 @@
 
 #include <spdlog/spdlog.h>
 
+#include "vulkan/instance.h"
+
 #define WIDTH 800
 #define HEIGHT 600
 
@@ -259,85 +261,7 @@ uint32_t round_up(uint32_t value, uint32_t alignment) {
 }
 
 void init_vulkan(GLFWwindow* window) {
-    const vk::raii::Context context;
-
-    // Check layers
-    std::vector<char const*> required_layers;
-    if (enable_validation_layers) {
-        required_layers.assign(validation_layers.begin(), validation_layers.end());
-    }
-    auto available_layers = context.enumerateInstanceLayerProperties();
-
-    for (auto& required_layer : required_layers) {
-        bool found = false;
-        for (auto& available_layer : available_layers) {
-            if (std::strcmp(available_layer.layerName, required_layer) == 0) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            throw std::runtime_error("Required instance layer not supported: " + std::string(required_layer));
-        }
-    }
-
-    // Check extensions
-    uint32_t required_extension_count = 0;
-    const char** required_instance_extensions_data = glfwGetRequiredInstanceExtensions(&required_extension_count);
-
-    std::vector required_instance_extensions(required_instance_extensions_data,
-                                             required_instance_extensions_data + required_extension_count);
-
-    if (enable_validation_layers) {
-        required_instance_extensions.push_back(vk::EXTDebugUtilsExtensionName);
-    }
-
-    auto available_extensions = context.enumerateInstanceExtensionProperties();
-
-    for (auto& extension : required_instance_extensions) {
-        bool found = false;
-        for (auto& available_extension : available_extensions) {
-            if (std::strcmp(available_extension.extensionName, extension) == 0) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            throw std::runtime_error("Required extension not supported: " + std::string(extension));
-        }
-    }
-
-    constexpr vk::ApplicationInfo app_info{
-        .pApplicationName = "HWRT",
-        .apiVersion = vk::ApiVersion14,
-    };
-
-    std::vector validation_features_enabled_list{
-        vk::ValidationFeatureEnableEXT::eBestPractices,
-        vk::ValidationFeatureEnableEXT::eSynchronizationValidation,
-        // vk::ValidationFeatureEnableEXT::eGpuAssisted,
-        // vk::ValidationFeatureEnableEXT::eGpuAssistedReserveBindingSlot,
-        // vk::ValidationFeatureEnableEXT::eDebugPrintf,
-    };
-
-    vk::ValidationFeaturesEXT validation_features{
-        .enabledValidationFeatureCount = static_cast<uint32_t>(validation_features_enabled_list.size()),
-        .pEnabledValidationFeatures = validation_features_enabled_list.data(),
-    };
-
-    vk::InstanceCreateInfo instance_create_info{
-        .pNext = validation_features,
-        .pApplicationInfo = &app_info,
-        .enabledExtensionCount = static_cast<uint32_t>(required_instance_extensions.size()),
-        .ppEnabledExtensionNames = required_instance_extensions.data(),
-    };
-
-    if (enable_validation_layers) {
-        instance_create_info.enabledLayerCount = static_cast<uint32_t>(required_layers.size());
-        instance_create_info.ppEnabledLayerNames = required_layers.data();
-    }
-
-    const auto instance = vk::raii::Instance(context, instance_create_info);
+    auto instance = Instance(enable_validation_layers);
 
     vk::raii::DebugUtilsMessengerEXT _debug_messenger{nullptr};
 
@@ -355,7 +279,7 @@ void init_vulkan(GLFWwindow* window) {
             .messageType = message_type_flags,
             .pfnUserCallback = &debug_callback
         };
-        _debug_messenger = instance.createDebugUtilsMessengerEXT(debug_utils_messenger_create_info_EXT);
+        _debug_messenger = instance.get().createDebugUtilsMessengerEXT(debug_utils_messenger_create_info_EXT);
     }
 
     std::vector<const char*> required_device_extensions;
@@ -368,7 +292,7 @@ void init_vulkan(GLFWwindow* window) {
 
     vk::raii::PhysicalDevice adapter = nullptr;
 
-    auto physical_devices = instance.enumeratePhysicalDevices();
+    auto physical_devices = instance.get().enumeratePhysicalDevices();
     if (physical_devices.empty()) {
         throw std::runtime_error("Failed to find GPUs with Vulkan support!");
     }
@@ -413,10 +337,10 @@ void init_vulkan(GLFWwindow* window) {
 
     // Surface
     VkSurfaceKHR _surface;
-    if (glfwCreateWindowSurface(*instance, window, nullptr, &_surface) != 0) {
+    if (glfwCreateWindowSurface(*instance.get(), window, nullptr, &_surface) != 0) {
         throw std::runtime_error("Failed to create window surface");
     }
-    auto surface = vk::raii::SurfaceKHR(instance, _surface);
+    auto surface = vk::raii::SurfaceKHR(instance.get(), _surface);
 
     // Device & Queue
     auto queue_family_properties = adapter.getQueueFamilyProperties();
@@ -534,7 +458,7 @@ void init_vulkan(GLFWwindow* window) {
         .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
         .physicalDevice = static_cast<vk::PhysicalDevice>(adapter),
         .device = static_cast<vk::Device>(device),
-        .instance = static_cast<vk::Instance>(instance),
+        .instance = static_cast<vk::Instance>(instance.get()),
     };
 
     VmaAllocator allocator;

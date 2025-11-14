@@ -9,7 +9,10 @@ find_package(glfw3 REQUIRED)
 add_subdirectory(external/spdlog)
 add_subdirectory(external/vma)
 
-add_executable(hwrt src/main.cpp)
+add_executable(hwrt
+        src/main.cpp
+        src/vulkan/instance.cpp
+)
 
 target_link_libraries(hwrt PRIVATE
         Vulkan::Vulkan
