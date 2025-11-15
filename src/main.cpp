@@ -15,6 +15,7 @@
 #include "vulkan/instance.h"
 #include "vulkan/adapter.h"
 #include "vulkan/device.h"
+#include "vulkan/swapchain.h"
 
 #define WIDTH 800
 #define HEIGHT 600
@@ -24,9 +25,9 @@ const std::vector validation_layers = {
 };
 
 #ifdef NDEBUG
-constexpr bool enable_validation_layers = false;
+constexpr bool validation = false;
 #else
-constexpr bool enable_validation_layers = true;
+constexpr bool validation = true;
 #endif
 
 std::vector<char> read_file(const std::string& filename) {
@@ -59,23 +60,6 @@ std::vector<Vertex> vertices = {
 std::vector<uint32_t> indices = {
     0, 1, 2,
 };
-
-vk::Extent2D choose_swapchain_extent(GLFWwindow* window, const vk::SurfaceCapabilitiesKHR& capabilities) {
-    if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
-        return capabilities.currentExtent;
-    }
-
-    int width, height;
-    glfwGetFramebufferSize(window, &width, &height);
-
-    auto min_extent = capabilities.minImageExtent;
-    auto max_extent = capabilities.maxImageExtent;
-
-    return {
-        .width = std::clamp<uint32_t>(width, min_extent.width, max_extent.width),
-        .height = std::clamp<uint32_t>(height, min_extent.height, max_extent.height),
-    };
-}
 
 vk::Format sRGB_to_UNorm(const vk::Format format) {
     switch (format) {
@@ -231,22 +215,15 @@ uint32_t round_up(const uint32_t value, const uint32_t alignment) {
 }
 
 void init_vulkan(GLFWwindow* window) {
-    auto instance = Instance(enable_validation_layers);
+    auto instance = Instance(validation);
 
-    std::vector<const char*> required_device_extensions;
-    required_device_extensions.push_back(vk::KHRSwapchainExtensionName);
-    required_device_extensions.push_back(vk::KHRDeferredHostOperationsExtensionName);
-    required_device_extensions.push_back(vk::KHRAccelerationStructureExtensionName);
-    required_device_extensions.push_back(vk::KHRRayTracingPipelineExtensionName);
-
-    auto adapter = Adapter(instance, required_device_extensions);
-
-    // Surface
-    VkSurfaceKHR _surface;
-    if (glfwCreateWindowSurface(*instance.get(), window, nullptr, &_surface) != 0) {
-        throw std::runtime_error("Failed to create window surface");
-    }
-    auto surface = vk::raii::SurfaceKHR(instance.get(), _surface);
+    std::vector device_extensions = {
+        vk::KHRSwapchainExtensionName,
+        vk::KHRDeferredHostOperationsExtensionName,
+        vk::KHRAccelerationStructureExtensionName,
+        vk::KHRRayTracingPipelineExtensionName
+    };
+    auto adapter = Adapter(instance, device_extensions);
 
     vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceVulkan14Features,
                        vk::PhysicalDeviceBufferDeviceAddressFeatures, vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
@@ -258,40 +235,8 @@ void init_vulkan(GLFWwindow* window) {
     features_chain.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure = vk::True;
     features_chain.get<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>().rayTracingPipeline = vk::True;
 
-    auto device = Device(adapter, required_device_extensions, features_chain.get<vk::PhysicalDeviceFeatures2>());
-
-    // Swapchain
-    auto surface_capabilities = adapter.get().getSurfaceCapabilitiesKHR(*surface);
-    auto swapchain_extent = choose_swapchain_extent(window, surface_capabilities);
-
-    vk::SurfaceFormatKHR swapchain_surface_format;
-    auto available_formats = adapter.get().getSurfaceFormatsKHR(*surface);
-    for (const auto& available_format : available_formats) {
-        if (available_format.format == vk::Format::eB8G8R8A8Srgb &&
-            available_format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
-            swapchain_surface_format = available_format;
-            break;
-        }
-        swapchain_surface_format = available_formats[0];
-    }
-
-    vk::SwapchainCreateInfoKHR swapchain_create_info{
-        .surface = *surface,
-        .minImageCount = surface_capabilities.minImageCount,
-        .imageFormat = swapchain_surface_format.format,
-        .imageColorSpace = swapchain_surface_format.colorSpace,
-        .imageExtent = swapchain_extent,
-        .imageArrayLayers = 1,
-        .imageUsage = vk::ImageUsageFlagBits::eTransferDst,
-        .imageSharingMode = vk::SharingMode::eExclusive,
-        .preTransform = surface_capabilities.currentTransform,
-        .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
-        .presentMode = vk::PresentModeKHR::eImmediate,
-        .clipped = true
-    };
-
-    auto swapchain = vk::raii::SwapchainKHR(device.get(), swapchain_create_info);
-    std::vector<vk::Image> swapchain_images = swapchain.getImages();
+    auto device = Device(adapter, device_extensions, features_chain.get<vk::PhysicalDeviceFeatures2>());
+    auto swapchain = Swapchain(instance, adapter, device, window);
 
     VmaAllocatorCreateInfo allocator_create_info = {
         .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
@@ -574,8 +519,8 @@ void init_vulkan(GLFWwindow* window) {
 
     vk::ImageCreateInfo ray_trace_image_create_info{
         .imageType = vk::ImageType::e2D,
-        .format = sRGB_to_UNorm(swapchain_surface_format.format),
-        .extent = vk::Extent3D{swapchain_extent.width, swapchain_extent.height, 1},
+        .format = sRGB_to_UNorm(swapchain.get_surface_format().format),
+        .extent = vk::Extent3D{swapchain.get_extent().width, swapchain.get_extent().height, 1},
         .mipLevels = 1,
         .arrayLayers = 1,
         .samples = vk::SampleCountFlagBits::e1,
@@ -594,7 +539,7 @@ void init_vulkan(GLFWwindow* window) {
     vk::ImageViewCreateInfo ray_trace_image_view_create_info{
         .image = ray_trace_image,
         .viewType = vk::ImageViewType::e2D,
-        .format = sRGB_to_UNorm(swapchain_surface_format.format),
+        .format = sRGB_to_UNorm(swapchain.get_surface_format().format),
         .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
     };
     auto ray_trace_image_view = device.get().createImageView(ray_trace_image_view_create_info);
@@ -830,7 +775,7 @@ void init_vulkan(GLFWwindow* window) {
         image_available_semaphores.emplace_back(device.get(), semaphore_info);
     }
 
-    for (size_t i = 0; i < swapchain_images.size(); ++i) {
+    for (size_t i = 0; i < swapchain.get_images().size(); ++i) {
         vk::SemaphoreCreateInfo semaphore_info;
         render_finished_semaphores.emplace_back(device.get(), semaphore_info);
     }
@@ -848,13 +793,13 @@ void init_vulkan(GLFWwindow* window) {
         auto& current_image_available_semaphore = image_available_semaphores[frame_index];
 
         vk::AcquireNextImageInfoKHR acquire_info{
-            .swapchain = swapchain,
+            .swapchain = swapchain.get(),
             .timeout = std::numeric_limits<uint64_t>::max(),
             .semaphore = current_image_available_semaphore,
             .deviceMask = 1,
         };
         image_index = device.get().acquireNextImage2KHR(acquire_info).value;
-        auto swapchain_image = swapchain_images[image_index];
+        auto swapchain_image = swapchain.get_images()[image_index];
 
         auto& current_render_finished_semaphore = render_finished_semaphores[image_index];
 
@@ -871,7 +816,7 @@ void init_vulkan(GLFWwindow* window) {
         vk::ImageCopy copy_region{
             .srcSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
             .dstSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
-            .extent = vk::Extent3D{swapchain_extent.width, swapchain_extent.height, 1},
+            .extent = vk::Extent3D{swapchain.get_extent().width, swapchain.get_extent().height, 1},
         };
 
         cmd_buffer.copyImage(ray_trace_image,
@@ -905,7 +850,7 @@ void init_vulkan(GLFWwindow* window) {
             .waitSemaphoreCount = 1,
             .pWaitSemaphores = &*current_render_finished_semaphore,
             .swapchainCount = 1,
-            .pSwapchains = &*swapchain,
+            .pSwapchains = &*swapchain.get(),
             .pImageIndices = &image_index,
         };
 

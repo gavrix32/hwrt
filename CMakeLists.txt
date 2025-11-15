@@ -14,6 +14,7 @@ add_executable(hwrt
         src/vulkan/instance.cpp
         src/vulkan/adapter.cpp
         src/vulkan/device.cpp
+        src/vulkan/swapchain.cpp
         src/vulkan/utils.h
 )
 
