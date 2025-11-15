@@ -12,6 +12,8 @@ add_subdirectory(external/vma)
 add_executable(hwrt
         src/main.cpp
         src/vulkan/instance.cpp
+        src/vulkan/adapter.cpp
+        src/vulkan/device.cpp
         src/vulkan/utils.h
 )
 
