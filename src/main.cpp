@@ -16,6 +16,9 @@
 #include "vulkan/adapter.h"
 #include "vulkan/device.h"
 #include "vulkan/swapchain.h"
+#include "vulkan/allocator.h"
+#include "vulkan/buffer.h"
+#include "vulkan/image.h"
 
 #define WIDTH 800
 #define HEIGHT 600
@@ -71,44 +74,6 @@ vk::Format sRGB_to_UNorm(const vk::Format format) {
         case vk::Format::eB8G8R8A8Srgb: return vk::Format::eB8G8R8A8Unorm;
         default: return format;
     }
-}
-
-vk::Buffer create_buffer(VmaAllocator allocator, vk::DeviceSize size, vk::BufferUsageFlags usage, VmaAllocation& allocation,
-                         VmaAllocationCreateFlags allocation_create_flags = 0) {
-    const vk::BufferCreateInfo buffer_create_info = {
-        .size = size,
-        .usage = usage,
-    };
-
-    const VmaAllocationCreateInfo allocation_create_info = {
-        .flags = allocation_create_flags,
-        .usage = VMA_MEMORY_USAGE_AUTO,
-        .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-    };
-
-    VkBuffer buffer;
-    const auto result = vmaCreateBuffer(allocator, buffer_create_info, &allocation_create_info, &buffer, &allocation, nullptr);
-
-    if (result != VK_SUCCESS) {
-        spdlog::error("vmaCreateBuffer failed: {}", vk::to_string(static_cast<vk::Result>(result)));
-    }
-    return buffer;
-}
-
-vk::Image create_image(vk::ImageCreateInfo image_create_info, VmaAllocator allocator, VmaAllocation& allocation,
-                       VmaAllocationCreateFlags allocation_create_flags = 0) {
-    const VmaAllocationCreateInfo allocation_create_info = {
-        .flags = allocation_create_flags,
-        .usage = VMA_MEMORY_USAGE_AUTO,
-    };
-
-    VkImage image;
-    const auto result = vmaCreateImage(allocator, image_create_info, &allocation_create_info, &image, &allocation, nullptr);
-
-    if (result != VK_SUCCESS) {
-        spdlog::error("vmaCreateImage failed: {}", vk::to_string(static_cast<vk::Result>(result)));
-    }
-    return image;
 }
 
 void layout_transition(const vk::raii::CommandBuffer& cmd_buffer, vk::Image image, vk::ImageLayout old_layout,
@@ -237,58 +202,42 @@ void init_vulkan(GLFWwindow* window) {
 
     auto device = Device(adapter, device_extensions, features_chain.get<vk::PhysicalDeviceFeatures2>());
     auto swapchain = Swapchain(instance, adapter, device, window);
+    auto allocator = Allocator(instance, adapter, device);
 
-    VmaAllocatorCreateInfo allocator_create_info = {
-        .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
-        .physicalDevice = static_cast<vk::PhysicalDevice>(adapter.get()),
-        .device = static_cast<vk::Device>(device.get()),
-        .instance = static_cast<vk::Instance>(instance.get()),
-    };
-
-    VmaAllocator allocator;
-    if (vmaCreateAllocator(&allocator_create_info, &allocator) != VK_SUCCESS) {
-        spdlog::error("Failed to create allocator");
-    }
-
-    VmaAllocation vertex_allocation, index_allocation;
-
-    vk::Buffer vertex_buffer = create_buffer(allocator,
-                                             sizeof(Vertex) * vertices.size(),
-                                             vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eStorageBuffer |
-                                             vk::BufferUsageFlagBits::eShaderDeviceAddress |
-                                             vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR,
-                                             vertex_allocation,
-                                             VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                                             VMA_ALLOCATION_CREATE_MAPPED_BIT);
+    auto vertex_buffer = Buffer(allocator,
+                                sizeof(Vertex) * vertices.size(),
+                                vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eStorageBuffer |
+                                vk::BufferUsageFlagBits::eShaderDeviceAddress |
+                                vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR,
+                                VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
     {
         VmaAllocationInfo allocation_info;
-        vmaGetAllocationInfo(allocator, vertex_allocation, &allocation_info);
+        vmaGetAllocationInfo(allocator.get(), vertex_buffer.get_allocation(), &allocation_info);
         memcpy(allocation_info.pMappedData, vertices.data(), sizeof(Vertex) * vertices.size());
     }
 
-    vk::Buffer index_buffer = create_buffer(allocator,
-                                            sizeof(uint32_t) * indices.size(),
-                                            vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eStorageBuffer |
-                                            vk::BufferUsageFlagBits::eShaderDeviceAddress |
-                                            vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR,
-                                            index_allocation,
-                                            VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                                            VMA_ALLOCATION_CREATE_MAPPED_BIT);
+    auto index_buffer = Buffer(allocator,
+                               sizeof(uint32_t) * indices.size(),
+                               vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eStorageBuffer |
+                               vk::BufferUsageFlagBits::eShaderDeviceAddress |
+                               vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR,
+                               VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                               VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
     {
         VmaAllocationInfo allocation_info;
-        vmaGetAllocationInfo(allocator, index_allocation, &allocation_info);
+        vmaGetAllocationInfo(allocator.get(), index_buffer.get_allocation(), &allocation_info);
         memcpy(allocation_info.pMappedData, indices.data(), sizeof(u_int32_t) * indices.size());
     }
 
     vk::BufferDeviceAddressInfo vertex_buffer_address_info{
-        .buffer = vertex_buffer,
+        .buffer = vertex_buffer.get(),
     };
     vk::DeviceAddress vertex_address = device.get().getBufferAddress(vertex_buffer_address_info);
 
     vk::BufferDeviceAddressInfo index_buffer_address_info{
-        .buffer = index_buffer,
+        .buffer = index_buffer.get(),
     };
     vk::DeviceAddress index_address = device.get().getBufferAddress(index_buffer_address_info);
 
@@ -333,17 +282,14 @@ void init_vulkan(GLFWwindow* window) {
         BLAS_build_geometry_info,
         BLAS_max_primitive_counts);
 
-    VmaAllocation BLAS_allocation;
-
-    auto BLAS_buffer = create_buffer(allocator,
-                                     BLAS_build_sizes_info.accelerationStructureSize,
-                                     vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR |
-                                     vk::BufferUsageFlagBits::eShaderDeviceAddress,
-                                     BLAS_allocation,
-                                     0);
+    auto BLAS_buffer = Buffer(allocator,
+                              BLAS_build_sizes_info.accelerationStructureSize,
+                              vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR |
+                              vk::BufferUsageFlagBits::eShaderDeviceAddress,
+                              0);
 
     vk::AccelerationStructureCreateInfoKHR BLAS_create_info{
-        .buffer = BLAS_buffer,
+        .buffer = BLAS_buffer.get(),
         .size = BLAS_build_sizes_info.accelerationStructureSize,
         .type = vk::AccelerationStructureTypeKHR::eBottomLevel,
     };
@@ -362,17 +308,14 @@ void init_vulkan(GLFWwindow* window) {
 
     // Build Bottom Level Acceleration Structure
 
-    VmaAllocation BLAS_scratch_allocation;
-
-    auto BLAS_scratch_buffer = create_buffer(allocator,
-                                             BLAS_build_sizes_info.buildScratchSize,
-                                             vk::BufferUsageFlagBits::eStorageBuffer |
-                                             vk::BufferUsageFlagBits::eShaderDeviceAddress,
-                                             BLAS_scratch_allocation,
-                                             VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+    auto BLAS_scratch_buffer = Buffer(allocator,
+                                      BLAS_build_sizes_info.buildScratchSize,
+                                      vk::BufferUsageFlagBits::eStorageBuffer |
+                                      vk::BufferUsageFlagBits::eShaderDeviceAddress,
+                                      VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
 
     vk::BufferDeviceAddressInfo BLAS_scratch_buffer_device_address_info{
-        .buffer = BLAS_scratch_buffer,
+        .buffer = BLAS_scratch_buffer.get(),
     };
     auto BLAS_scratch_buffer_device_address = device.get().getBufferAddress(BLAS_scratch_buffer_device_address_info);
 
@@ -421,24 +364,21 @@ void init_vulkan(GLFWwindow* window) {
         .accelerationStructureReference = BLAS_device_address
     };
 
-    VmaAllocation BLAS_instance_allocation;
-
-    auto BLAS_instance_buffer = create_buffer(allocator,
-                                              sizeof(vk::AccelerationStructureInstanceKHR),
-                                              vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR |
-                                              vk::BufferUsageFlagBits::eShaderDeviceAddress,
-                                              BLAS_instance_allocation,
-                                              VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                                              VMA_ALLOCATION_CREATE_MAPPED_BIT);
+    auto BLAS_instance_buffer = Buffer(allocator,
+                                       sizeof(vk::AccelerationStructureInstanceKHR),
+                                       vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR |
+                                       vk::BufferUsageFlagBits::eShaderDeviceAddress,
+                                       VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                                       VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
     {
         VmaAllocationInfo allocation_info;
-        vmaGetAllocationInfo(allocator, BLAS_instance_allocation, &allocation_info);
+        vmaGetAllocationInfo(allocator.get(), BLAS_instance_buffer.get_allocation(), &allocation_info);
         memcpy(allocation_info.pMappedData, &BLAS_instance, sizeof(vk::AccelerationStructureInstanceKHR));
     }
 
     vk::BufferDeviceAddressInfo BLAS_instance_buffer_address_info{
-        .buffer = BLAS_instance_buffer
+        .buffer = BLAS_instance_buffer.get()
     };
     auto BLAS_instance_device_address = device.get().getBufferAddress(BLAS_instance_buffer_address_info);
 
@@ -475,17 +415,14 @@ void init_vulkan(GLFWwindow* window) {
         TLAS_build_geometry_info,
         TLAS_max_primitive_counts);
 
-    VmaAllocation TLAS_allocation;
-
-    auto TLAS_buffer = create_buffer(allocator,
-                                     TLAS_build_sizes_info.accelerationStructureSize,
-                                     vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR
-                                     /*    | vk::BufferUsageFlagBits::eShaderDeviceAddress*/,
-                                     TLAS_allocation,
-                                     0);
+    auto TLAS_buffer = Buffer(allocator,
+                              TLAS_build_sizes_info.accelerationStructureSize,
+                              vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR
+                              /*    | vk::BufferUsageFlagBits::eShaderDeviceAddress*/,
+                              0);
 
     vk::AccelerationStructureCreateInfoKHR TLAS_create_info{
-        .buffer = TLAS_buffer,
+        .buffer = TLAS_buffer.get(),
         .size = TLAS_build_sizes_info.accelerationStructureSize,
         .type = vk::AccelerationStructureTypeKHR::eTopLevel,
     };
@@ -494,17 +431,14 @@ void init_vulkan(GLFWwindow* window) {
 
     // Build Top Level Acceleration Structure
 
-    VmaAllocation TLAS_scratch_allocation;
-
-    auto TLAS_scratch_buffer = create_buffer(allocator,
-                                             TLAS_build_sizes_info.buildScratchSize,
-                                             vk::BufferUsageFlagBits::eStorageBuffer |
-                                             vk::BufferUsageFlagBits::eShaderDeviceAddress,
-                                             TLAS_scratch_allocation,
-                                             VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+    auto TLAS_scratch_buffer = Buffer(allocator,
+                                      TLAS_build_sizes_info.buildScratchSize,
+                                      vk::BufferUsageFlagBits::eStorageBuffer |
+                                      vk::BufferUsageFlagBits::eShaderDeviceAddress,
+                                      VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
 
     vk::BufferDeviceAddressInfo TLAS_scratch_buffer_device_address_info{
-        .buffer = TLAS_scratch_buffer,
+        .buffer = TLAS_scratch_buffer.get(),
     };
     auto TLAS_scratch_buffer_device_address = device.get().getBufferAddress(TLAS_scratch_buffer_device_address_info);
 
@@ -532,19 +466,17 @@ void init_vulkan(GLFWwindow* window) {
         .initialLayout = vk::ImageLayout::eUndefined,
     };
 
-    VmaAllocation ray_trace_image_allocation;
-
-    auto ray_trace_image = create_image(ray_trace_image_create_info, allocator, ray_trace_image_allocation);
+    auto ray_trace_image = Image(ray_trace_image_create_info, allocator);
 
     vk::ImageViewCreateInfo ray_trace_image_view_create_info{
-        .image = ray_trace_image,
+        .image = ray_trace_image.get(),
         .viewType = vk::ImageViewType::e2D,
         .format = sRGB_to_UNorm(swapchain.get_surface_format().format),
         .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
     };
     auto ray_trace_image_view = device.get().createImageView(ray_trace_image_view_create_info);
 
-    layout_transition(single_time_cmd_buffer, ray_trace_image, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
+    layout_transition(single_time_cmd_buffer, ray_trace_image.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
 
     end_single_time_commands(device.get_queue(), single_time_cmd_buffer);
 
@@ -715,26 +647,23 @@ void init_vulkan(GLFWwindow* window) {
     vk::StridedDeviceAddressRegionKHR rmiss_region{};
     vk::StridedDeviceAddressRegionKHR rchit_region{};
 
-    VmaAllocation SBT_allocation;
-
-    vk::Buffer SBT_buffer = create_buffer(allocator,
-                                          buffer_size,
-                                          vk::BufferUsageFlagBits::eShaderDeviceAddress |
-                                          vk::BufferUsageFlagBits::eShaderBindingTableKHR,
-                                          SBT_allocation,
-                                          VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+    auto SBT_buffer = Buffer(allocator,
+                             buffer_size,
+                             vk::BufferUsageFlagBits::eShaderDeviceAddress |
+                             vk::BufferUsageFlagBits::eShaderBindingTableKHR,
+                             VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
     {
         uint32_t rgen_offset = 0;
 
         vk::BufferDeviceAddressInfo SBT_buffer_address_info{
-            .buffer = SBT_buffer,
+            .buffer = SBT_buffer.get(),
         };
         vk::DeviceAddress SBT_address = device.get().getBufferAddress(
             SBT_buffer_address_info);
 
         VmaAllocationInfo allocation_info;
-        vmaGetAllocationInfo(allocator, SBT_allocation, &allocation_info);
+        vmaGetAllocationInfo(allocator.get(), SBT_buffer.get_allocation(), &allocation_info);
 
         auto* p_data = static_cast<uint8_t*>(allocation_info.pMappedData);
 
@@ -810,7 +739,7 @@ void init_vulkan(GLFWwindow* window) {
         cmd_buffer.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, pipeline_layout, 0, writes);
         cmd_buffer.traceRaysKHR(rgen_region, rmiss_region, rchit_region, {}, WIDTH, HEIGHT, 1);
 
-        layout_transition(cmd_buffer, ray_trace_image, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal);
+        layout_transition(cmd_buffer, ray_trace_image.get(), vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal);
         layout_transition(cmd_buffer, swapchain_image, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
 
         vk::ImageCopy copy_region{
@@ -819,14 +748,14 @@ void init_vulkan(GLFWwindow* window) {
             .extent = vk::Extent3D{swapchain.get_extent().width, swapchain.get_extent().height, 1},
         };
 
-        cmd_buffer.copyImage(ray_trace_image,
+        cmd_buffer.copyImage(ray_trace_image.get(),
                              vk::ImageLayout::eTransferSrcOptimal,
                              swapchain_image,
                              vk::ImageLayout::eTransferDstOptimal,
                              copy_region);
 
         layout_transition(cmd_buffer, swapchain_image, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::ePresentSrcKHR);
-        layout_transition(cmd_buffer, ray_trace_image, vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eGeneral);
+        layout_transition(cmd_buffer, ray_trace_image.get(), vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eGeneral);
 
         cmd_buffer.end();
 
@@ -880,17 +809,6 @@ void init_vulkan(GLFWwindow* window) {
     }
 
     device.get().waitIdle();
-
-    vmaDestroyImage(allocator, ray_trace_image, ray_trace_image_allocation);
-    vmaDestroyBuffer(allocator, SBT_buffer, SBT_allocation);
-    vmaDestroyBuffer(allocator, TLAS_scratch_buffer, TLAS_scratch_allocation);
-    vmaDestroyBuffer(allocator, TLAS_buffer, TLAS_allocation);
-    vmaDestroyBuffer(allocator, BLAS_instance_buffer, BLAS_instance_allocation);
-    vmaDestroyBuffer(allocator, BLAS_scratch_buffer, BLAS_scratch_allocation);
-    vmaDestroyBuffer(allocator, BLAS_buffer, BLAS_allocation);
-    vmaDestroyBuffer(allocator, vertex_buffer, vertex_allocation);
-    vmaDestroyBuffer(allocator, index_buffer, index_allocation);
-    vmaDestroyAllocator(allocator);
 }
 
 int main() {
