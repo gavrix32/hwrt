@@ -335,31 +335,15 @@ void init_vulkan(GLFWwindow* window) {
     }
     spdlog::info("Selected queue family {}", queue_family_index);
 
-    vk::PhysicalDeviceBufferDeviceAddressFeatures buffer_device_address_features{
-        .bufferDeviceAddress = vk::True,
-    };
+    vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceVulkan14Features,
+                       vk::PhysicalDeviceBufferDeviceAddressFeatures, vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
+                       vk::PhysicalDeviceRayTracingPipelineFeaturesKHR> features_chain;
 
-    vk::PhysicalDeviceAccelerationStructureFeaturesKHR
-        acceleration_structure_features{
-            .pNext = buffer_device_address_features,
-            .accelerationStructure = vk::True,
-        };
-
-    vk::PhysicalDeviceRayTracingPipelineFeaturesKHR
-        ray_tracing_pipeline_features{
-            .pNext = acceleration_structure_features,
-            .rayTracingPipeline = vk::True,
-        };
-
-    vk::PhysicalDeviceVulkan13Features vulkan13_features{
-        .pNext = ray_tracing_pipeline_features,
-        .synchronization2 = vk::True,
-    };
-
-    vk::PhysicalDeviceVulkan14Features vulkan14_features{
-        .pNext = vulkan13_features,
-        .pushDescriptor = vk::True,
-    };
+    features_chain.get<vk::PhysicalDeviceVulkan13Features>().synchronization2 = vk::True;
+    features_chain.get<vk::PhysicalDeviceVulkan14Features>().pushDescriptor = vk::True;
+    features_chain.get<vk::PhysicalDeviceBufferDeviceAddressFeatures>().bufferDeviceAddress = vk::True;
+    features_chain.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure = vk::True;
+    features_chain.get<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>().rayTracingPipeline = vk::True;
 
     float queue_priority = 1.0f;
     vk::DeviceQueueCreateInfo device_queue_create_info{
@@ -369,7 +353,7 @@ void init_vulkan(GLFWwindow* window) {
     };
 
     vk::DeviceCreateInfo device_create_info{
-        .pNext = &vulkan14_features,
+        .pNext = &features_chain.get<vk::PhysicalDeviceFeatures2>(),
         .queueCreateInfoCount = 1,
         .pQueueCreateInfos = &device_queue_create_info,
         .enabledExtensionCount = static_cast<uint32_t>(required_device_extensions.size()),
