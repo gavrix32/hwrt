@@ -20,7 +20,7 @@ public:
         const auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
         double ms = duration / 1000.0;
 
-        spdlog::info("{} ({:.3f} ms)", name, ms);
+        spdlog::trace("{} ({:.3f} ms)", name, ms);
     }
 
 private:

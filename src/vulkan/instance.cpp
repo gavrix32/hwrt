@@ -51,7 +51,7 @@ vk::raii::DebugUtilsMessengerEXT setup_debug_messenger(const vk::raii::Instance&
 }
 
 Instance::Instance(const bool validation) : vk_instance(nullptr), vk_debug_messenger(nullptr) {
-    SCOPED_TIMER_NAMED("Create VkInstance");
+    SCOPED_TIMER_NAMED("Created VkInstance");
 
     const std::vector validation_layers = {
         "VK_LAYER_KHRONOS_validation"

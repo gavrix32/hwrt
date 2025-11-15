@@ -7,9 +7,12 @@
 
 #include "allocator.h"
 #include "image.h"
+#include "utils.h"
 
 Image::Image(vk::ImageCreateInfo image_create_info, const Allocator& allocator,
              const VmaAllocationCreateFlags allocation_create_flags) : vma_allocator(allocator.get()) {
+    SCOPED_TIMER_NAMED("Created VkImage");
+
     const VmaAllocationCreateInfo allocation_create_info = {
         .flags = allocation_create_flags,
         .usage = VMA_MEMORY_USAGE_AUTO,

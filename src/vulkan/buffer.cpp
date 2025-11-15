@@ -7,9 +7,12 @@
 
 #include "allocator.h"
 #include "buffer.h"
+#include "utils.h"
 
 Buffer::Buffer(const Allocator& allocator, const vk::DeviceSize size, const vk::BufferUsageFlags usage,
                const VmaAllocationCreateFlags allocation_create_flags) : vma_allocator(allocator.get()) {
+    SCOPED_TIMER_NAMED("Created VkBuffer");
+
     const vk::BufferCreateInfo buffer_create_info = {
         .size = size,
         .usage = usage,

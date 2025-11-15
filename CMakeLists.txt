@@ -18,6 +18,7 @@ add_executable(hwrt
         src/vulkan/allocator.cpp
         src/vulkan/buffer.cpp
         src/vulkan/image.cpp
+        src/vulkan/encoder.cpp
         src/vulkan/utils.h
 )
 
