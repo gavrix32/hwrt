@@ -20,7 +20,7 @@ std::string_view get_physical_device_type_name(const vk::PhysicalDeviceType type
 }
 
 Adapter::Adapter(const Instance& instance, const std::vector<const char*>& required_extensions) : vk_physical_device(nullptr) {
-    SCOPED_TIMER_NAMED("Created VkPhysicalDevice");
+    SCOPED_TIMER_NAMED("Create VkPhysicalDevice");
 
     const auto physical_devices = instance.get().enumeratePhysicalDevices();
     if (physical_devices.empty()) {

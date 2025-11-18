@@ -9,7 +9,7 @@
 
 Device::Device(const Adapter& adapter, const std::vector<const char*>& required_extensions,
                vk::PhysicalDeviceFeatures2 features) : vk_device(nullptr), vk_queue(nullptr), queue_family_index(0) {
-    SCOPED_TIMER_NAMED("Created VkDevice, VkQueue");
+    SCOPED_TIMER_NAMED("Create VkDevice, VkQueue");
 
     auto queue_family_properties = adapter.get().getQueueFamilyProperties();
 

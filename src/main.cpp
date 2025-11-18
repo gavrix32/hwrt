@@ -16,6 +16,7 @@
 #include "vulkan/adapter.h"
 #include "vulkan/device.h"
 #include "vulkan/swapchain.h"
+#include "vulkan/encoder.h"
 #include "vulkan/allocator.h"
 #include "vulkan/buffer.h"
 #include "vulkan/image.h"
@@ -76,8 +77,8 @@ vk::Format sRGB_to_UNorm(const vk::Format format) {
     }
 }
 
-void layout_transition(const vk::raii::CommandBuffer& cmd_buffer, vk::Image image, vk::ImageLayout old_layout,
-                       vk::ImageLayout new_layout) {
+void layout_transition(const vk::raii::CommandBuffer& cmd_buffer, const vk::Image image, const vk::ImageLayout old_layout,
+                       const vk::ImageLayout new_layout) {
     vk::AccessFlags2 srcAccessMask;
     vk::AccessFlags2 dstAccessMask;
     vk::PipelineStageFlags2 srcStageMask;
@@ -146,33 +147,6 @@ void layout_transition(const vk::raii::CommandBuffer& cmd_buffer, vk::Image imag
         .pImageMemoryBarriers = &barrier
     };
     cmd_buffer.pipelineBarrier2(dependency_info);
-}
-
-vk::raii::CommandBuffer begin_single_time_commands(const vk::raii::Device& device, const vk::raii::CommandPool& cmd_pool) {
-    const vk::CommandBufferAllocateInfo alloc_info{
-        .commandPool = *cmd_pool,
-        .level = vk::CommandBufferLevel::ePrimary,
-        .commandBufferCount = 1,
-    };
-    auto cmd_buffer = std::move(vk::raii::CommandBuffers(device, alloc_info).front());
-
-    constexpr vk::CommandBufferBeginInfo begin_info{
-        .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit
-    };
-    cmd_buffer.begin(begin_info);
-
-    return cmd_buffer;
-}
-
-void end_single_time_commands(const vk::raii::Queue& queue, const vk::raii::CommandBuffer& cmd_buffer) {
-    cmd_buffer.end();
-
-    const vk::SubmitInfo submit_info{
-        .commandBufferCount = 1,
-        .pCommandBuffers = &*cmd_buffer,
-    };
-    queue.submit(submit_info, nullptr);
-    queue.waitIdle();
 }
 
 uint32_t round_up(const uint32_t value, const uint32_t alignment) {
@@ -294,15 +268,7 @@ void init_vulkan(GLFWwindow* window) {
         .type = vk::AccelerationStructureTypeKHR::eBottomLevel,
     };
 
-    vk::CommandPoolCreateInfo cmd_pool_create_info{
-        .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
-        .queueFamilyIndex = device.get_queue_family_index(),
-    };
-    auto cmd_pool = vk::raii::CommandPool(device.get(), cmd_pool_create_info);
-
-    auto single_time_cmd_buffer = begin_single_time_commands(device.get(), cmd_pool);
-
-    constexpr int frames_in_flight = 2;
+    auto single_time_encoder = SingleTimeEncoder(device);
 
     auto BLAS = device.get().createAccelerationStructureKHR(BLAS_create_info);
 
@@ -322,7 +288,7 @@ void init_vulkan(GLFWwindow* window) {
     BLAS_build_geometry_info.dstAccelerationStructure = BLAS;
     BLAS_build_geometry_info.scratchData = BLAS_scratch_buffer_device_address;
 
-    single_time_cmd_buffer.buildAccelerationStructuresKHR({BLAS_build_geometry_info}, {&BLAS_build_range_info});
+    single_time_encoder.get_cmd().buildAccelerationStructuresKHR({BLAS_build_geometry_info}, {&BLAS_build_range_info});
 
     vk::MemoryBarrier2 AS_build_barrier{
         .srcStageMask = vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
@@ -336,7 +302,7 @@ void init_vulkan(GLFWwindow* window) {
         .pMemoryBarriers = &AS_build_barrier,
     };
 
-    single_time_cmd_buffer.pipelineBarrier2(dependency_info_as_build);
+    single_time_encoder.get_cmd().pipelineBarrier2(dependency_info_as_build);
 
     // Create Top Level Acceleration Structure
 
@@ -445,7 +411,7 @@ void init_vulkan(GLFWwindow* window) {
     TLAS_build_geometry_info.dstAccelerationStructure = TLAS;
     TLAS_build_geometry_info.scratchData = TLAS_scratch_buffer_device_address;
 
-    single_time_cmd_buffer.buildAccelerationStructuresKHR({TLAS_build_geometry_info}, {&TLAS_build_range_info});
+    single_time_encoder.get_cmd().buildAccelerationStructuresKHR({TLAS_build_geometry_info}, {&TLAS_build_range_info});
 
     // Ray Trace Image
 
@@ -476,9 +442,12 @@ void init_vulkan(GLFWwindow* window) {
     };
     auto ray_trace_image_view = device.get().createImageView(ray_trace_image_view_create_info);
 
-    layout_transition(single_time_cmd_buffer, ray_trace_image.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
+    layout_transition(single_time_encoder.get_cmd(),
+                      ray_trace_image.get(),
+                      vk::ImageLayout::eUndefined,
+                      vk::ImageLayout::eGeneral);
 
-    end_single_time_commands(device.get_queue(), single_time_cmd_buffer);
+    single_time_encoder.submit(device.get_queue());
 
     // Push Descriptors & Pipeline Layout
 
@@ -687,12 +656,9 @@ void init_vulkan(GLFWwindow* window) {
     std::vector<vk::raii::Semaphore> render_finished_semaphores;
     std::vector<vk::raii::Fence> render_fences;
 
-    vk::CommandBufferAllocateInfo cmd_buffer_allocate_info{
-        .commandPool = cmd_pool,
-        .level = vk::CommandBufferLevel::ePrimary,
-        .commandBufferCount = frames_in_flight,
-    };
-    auto cmd_buffers = vk::raii::CommandBuffers(device.get(), cmd_buffer_allocate_info);
+    constexpr int frames_in_flight = 2;
+
+    auto encoder = Encoder(device, frames_in_flight);
 
     for (size_t i = 0; i < frames_in_flight; ++i) {
         vk::FenceCreateInfo fence_create_info{
@@ -732,15 +698,15 @@ void init_vulkan(GLFWwindow* window) {
 
         auto& current_render_finished_semaphore = render_finished_semaphores[image_index];
 
-        auto& cmd_buffer = cmd_buffers[frame_index];
+        encoder.begin(frame_index);
+        auto& cmd = encoder.get_cmd();
 
-        cmd_buffer.begin({});
-        cmd_buffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, ray_tracing_pipeline);
-        cmd_buffer.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, pipeline_layout, 0, writes);
-        cmd_buffer.traceRaysKHR(rgen_region, rmiss_region, rchit_region, {}, WIDTH, HEIGHT, 1);
+        cmd.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, ray_tracing_pipeline);
+        cmd.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, pipeline_layout, 0, writes);
+        cmd.traceRaysKHR(rgen_region, rmiss_region, rchit_region, {}, WIDTH, HEIGHT, 1);
 
-        layout_transition(cmd_buffer, ray_trace_image.get(), vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal);
-        layout_transition(cmd_buffer, swapchain_image, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
+        layout_transition(cmd, ray_trace_image.get(), vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal);
+        layout_transition(cmd, swapchain_image, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
 
         vk::ImageCopy copy_region{
             .srcSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
@@ -748,16 +714,16 @@ void init_vulkan(GLFWwindow* window) {
             .extent = vk::Extent3D{swapchain.get_extent().width, swapchain.get_extent().height, 1},
         };
 
-        cmd_buffer.copyImage(ray_trace_image.get(),
-                             vk::ImageLayout::eTransferSrcOptimal,
-                             swapchain_image,
-                             vk::ImageLayout::eTransferDstOptimal,
-                             copy_region);
+        cmd.copyImage(ray_trace_image.get(),
+                      vk::ImageLayout::eTransferSrcOptimal,
+                      swapchain_image,
+                      vk::ImageLayout::eTransferDstOptimal,
+                      copy_region);
 
-        layout_transition(cmd_buffer, swapchain_image, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::ePresentSrcKHR);
-        layout_transition(cmd_buffer, ray_trace_image.get(), vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eGeneral);
+        layout_transition(cmd, swapchain_image, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::ePresentSrcKHR);
+        layout_transition(cmd, ray_trace_image.get(), vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eGeneral);
 
-        cmd_buffer.end();
+        encoder.end();
 
         vk::PipelineStageFlags wait_stage = vk::PipelineStageFlagBits::eTopOfPipe;
 
@@ -767,7 +733,7 @@ void init_vulkan(GLFWwindow* window) {
             .pWaitDstStageMask = &wait_stage,
 
             .commandBufferCount = 1,
-            .pCommandBuffers = &*cmd_buffer,
+            .pCommandBuffers = &*cmd,
 
             .signalSemaphoreCount = 1,
             .pSignalSemaphores = &*current_render_finished_semaphore,

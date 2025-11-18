@@ -4,10 +4,10 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#include "swapchain.h"
 #include "instance.h"
 #include "adapter.h"
 #include "device.h"
-#include "swapchain.h"
 #include "utils.h"
 
 vk::Extent2D choose_extent(GLFWwindow* window, const vk::SurfaceCapabilitiesKHR& capabilities) {
@@ -29,7 +29,7 @@ vk::Extent2D choose_extent(GLFWwindow* window, const vk::SurfaceCapabilitiesKHR&
 
 Swapchain::Swapchain(const Instance& instance, const Adapter& adapter, const Device& device,
                      GLFWwindow* window) : vk_swapchain_khr(nullptr), vk_surface_khr(nullptr) {
-    SCOPED_TIMER_NAMED("Created VkSurfaceKHR, VkSwapchainKHR");
+    SCOPED_TIMER_NAMED("Create VkSurfaceKHR, VkSwapchainKHR");
 
     VkSurfaceKHR _surface;
     if (glfwCreateWindowSurface(*instance.get(), window, nullptr, &_surface) != 0) {
