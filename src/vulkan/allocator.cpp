@@ -1,8 +1,6 @@
 #define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS 1
 #include <vulkan/vulkan_raii.hpp>
 
-#include <vk_mem_alloc.h>
-
 #include <spdlog/spdlog.h>
 
 #include "instance.h"

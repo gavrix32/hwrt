@@ -8,6 +8,7 @@ find_package(glfw3 REQUIRED)
 
 add_subdirectory(external/spdlog)
 add_subdirectory(external/vma)
+add_subdirectory(external/glm)
 
 #if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 #    add_compile_options(-fsanitize=address,undefined -g -fno-omit-frame-pointer)
@@ -29,6 +30,8 @@ add_executable(hwrt
         src/vulkan/image.cpp
         src/vulkan/encoder.cpp
         src/vulkan/utils.h
+        src/context.cpp
+        src/context.h
 )
 
 target_link_libraries(hwrt PRIVATE
@@ -36,4 +39,11 @@ target_link_libraries(hwrt PRIVATE
         glfw
         spdlog::spdlog_header_only
         GPUOpen::VulkanMemoryAllocator
+        glm::glm
+)
+
+target_compile_definitions(hwrt PRIVATE
+        GLM_FORCE_DEPTH_ZERO_TO_ONE
+        GLM_FORCE_RADIANS
+        GLM_ENABLE_EXPERIMENTAL
 )

@@ -12,7 +12,7 @@
 
 #include <spdlog/spdlog.h>
 
-#include "vulkan/instance.h"
+#include "context.h"
 #include "vulkan/adapter.h"
 #include "vulkan/device.h"
 #include "vulkan/swapchain.h"
@@ -23,6 +23,8 @@
 
 #define WIDTH 800
 #define HEIGHT 600
+
+// TODO: Abstractions (context, frame data, buffer and image builders, pipeline, blas, tlas, sbt, window, input)
 
 const std::vector validation_layers = {
     "VK_LAYER_KHRONOS_validation"
@@ -65,6 +67,7 @@ std::vector<uint32_t> indices = {
     0, 1, 2,
 };
 
+// TODO: is it necessary?
 vk::Format sRGB_to_UNorm(const vk::Format format) {
     switch (format) {
         case vk::Format::eR8Srgb: return vk::Format::eR8Unorm;
@@ -150,31 +153,9 @@ void layout_transition(const vk::raii::CommandBuffer& cmd_buffer, const vk::Imag
 }
 
 void init_vulkan(GLFWwindow* window) {
-    auto instance = Instance(validation);
+    auto ctx = Context(window, validation);
 
-    std::vector device_extensions = {
-        vk::KHRSwapchainExtensionName,
-        vk::KHRDeferredHostOperationsExtensionName,
-        vk::KHRAccelerationStructureExtensionName,
-        vk::KHRRayTracingPipelineExtensionName
-    };
-    auto adapter = Adapter(instance, device_extensions);
-
-    vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceVulkan14Features,
-                       vk::PhysicalDeviceBufferDeviceAddressFeatures, vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
-                       vk::PhysicalDeviceRayTracingPipelineFeaturesKHR> features_chain;
-
-    features_chain.get<vk::PhysicalDeviceVulkan13Features>().synchronization2 = vk::True;
-    features_chain.get<vk::PhysicalDeviceVulkan14Features>().pushDescriptor = vk::True;
-    features_chain.get<vk::PhysicalDeviceBufferDeviceAddressFeatures>().bufferDeviceAddress = vk::True;
-    features_chain.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure = vk::True;
-    features_chain.get<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>().rayTracingPipeline = vk::True;
-
-    auto device = Device(adapter, device_extensions, features_chain.get<vk::PhysicalDeviceFeatures2>());
-    auto swapchain = Swapchain(instance, adapter, device, window);
-    auto allocator = Allocator(instance, adapter, device);
-
-    auto vertex_buffer = Buffer(allocator,
+    auto vertex_buffer = Buffer(ctx.get_allocator(),
                                 sizeof(Vertex) * vertices.size(),
                                 vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eStorageBuffer |
                                 vk::BufferUsageFlagBits::eShaderDeviceAddress |
@@ -183,11 +164,11 @@ void init_vulkan(GLFWwindow* window) {
 
     {
         VmaAllocationInfo allocation_info;
-        vmaGetAllocationInfo(allocator.get(), vertex_buffer.get_allocation(), &allocation_info);
+        vmaGetAllocationInfo(ctx.get_allocator().get(), vertex_buffer.get_allocation(), &allocation_info);
         memcpy(allocation_info.pMappedData, vertices.data(), sizeof(Vertex) * vertices.size());
     }
 
-    auto index_buffer = Buffer(allocator,
+    auto index_buffer = Buffer(ctx.get_allocator(),
                                sizeof(uint32_t) * indices.size(),
                                vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eStorageBuffer |
                                vk::BufferUsageFlagBits::eShaderDeviceAddress |
@@ -197,19 +178,19 @@ void init_vulkan(GLFWwindow* window) {
 
     {
         VmaAllocationInfo allocation_info;
-        vmaGetAllocationInfo(allocator.get(), index_buffer.get_allocation(), &allocation_info);
+        vmaGetAllocationInfo(ctx.get_allocator().get(), index_buffer.get_allocation(), &allocation_info);
         memcpy(allocation_info.pMappedData, indices.data(), sizeof(u_int32_t) * indices.size());
     }
 
     vk::BufferDeviceAddressInfo vertex_buffer_address_info{
         .buffer = vertex_buffer.get(),
     };
-    vk::DeviceAddress vertex_address = device.get().getBufferAddress(vertex_buffer_address_info);
+    vk::DeviceAddress vertex_address = ctx.get_device().get().getBufferAddress(vertex_buffer_address_info);
 
     vk::BufferDeviceAddressInfo index_buffer_address_info{
         .buffer = index_buffer.get(),
     };
-    vk::DeviceAddress index_address = device.get().getBufferAddress(index_buffer_address_info);
+    vk::DeviceAddress index_address = ctx.get_device().get().getBufferAddress(index_buffer_address_info);
 
     // Create Bottom Level Acceleration Structure
 
@@ -247,12 +228,12 @@ void init_vulkan(GLFWwindow* window) {
     std::vector<uint32_t> BLAS_max_primitive_counts(1);
     BLAS_max_primitive_counts[0] = BLAS_build_range_info.primitiveCount;
 
-    auto BLAS_build_sizes_info = device.get().getAccelerationStructureBuildSizesKHR(
+    auto BLAS_build_sizes_info = ctx.get_device().get().getAccelerationStructureBuildSizesKHR(
         vk::AccelerationStructureBuildTypeKHR::eDevice,
         BLAS_build_geometry_info,
         BLAS_max_primitive_counts);
 
-    auto BLAS_buffer = Buffer(allocator,
+    auto BLAS_buffer = Buffer(ctx.get_allocator(),
                               BLAS_build_sizes_info.accelerationStructureSize,
                               vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR |
                               vk::BufferUsageFlagBits::eShaderDeviceAddress,
@@ -264,13 +245,13 @@ void init_vulkan(GLFWwindow* window) {
         .type = vk::AccelerationStructureTypeKHR::eBottomLevel,
     };
 
-    auto single_time_encoder = SingleTimeEncoder(device);
+    auto single_time_encoder = SingleTimeEncoder(ctx.get_device());
 
-    auto BLAS = device.get().createAccelerationStructureKHR(BLAS_create_info);
+    auto BLAS = ctx.get_device().get().createAccelerationStructureKHR(BLAS_create_info);
 
     // Build Bottom Level Acceleration Structure
 
-    auto BLAS_scratch_buffer = Buffer(allocator,
+    auto BLAS_scratch_buffer = Buffer(ctx.get_allocator(),
                                       BLAS_build_sizes_info.buildScratchSize,
                                       vk::BufferUsageFlagBits::eStorageBuffer |
                                       vk::BufferUsageFlagBits::eShaderDeviceAddress,
@@ -279,7 +260,7 @@ void init_vulkan(GLFWwindow* window) {
     vk::BufferDeviceAddressInfo BLAS_scratch_buffer_device_address_info{
         .buffer = BLAS_scratch_buffer.get(),
     };
-    auto BLAS_scratch_buffer_device_address = device.get().getBufferAddress(BLAS_scratch_buffer_device_address_info);
+    auto BLAS_scratch_buffer_device_address = ctx.get_device().get().getBufferAddress(BLAS_scratch_buffer_device_address_info);
 
     BLAS_build_geometry_info.dstAccelerationStructure = BLAS;
     BLAS_build_geometry_info.scratchData = BLAS_scratch_buffer_device_address;
@@ -305,7 +286,7 @@ void init_vulkan(GLFWwindow* window) {
     vk::AccelerationStructureDeviceAddressInfoKHR BLAS_device_address_info{
         .accelerationStructure = BLAS
     };
-    auto BLAS_device_address = device.get().getAccelerationStructureAddressKHR(BLAS_device_address_info);
+    auto BLAS_device_address = ctx.get_device().get().getAccelerationStructureAddressKHR(BLAS_device_address_info);
 
     vk::TransformMatrixKHR transform{
         std::array<std::array<float, 4>, 3>{
@@ -326,7 +307,7 @@ void init_vulkan(GLFWwindow* window) {
         .accelerationStructureReference = BLAS_device_address
     };
 
-    auto BLAS_instance_buffer = Buffer(allocator,
+    auto BLAS_instance_buffer = Buffer(ctx.get_allocator(),
                                        sizeof(vk::AccelerationStructureInstanceKHR),
                                        vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR |
                                        vk::BufferUsageFlagBits::eShaderDeviceAddress,
@@ -335,14 +316,14 @@ void init_vulkan(GLFWwindow* window) {
 
     {
         VmaAllocationInfo allocation_info;
-        vmaGetAllocationInfo(allocator.get(), BLAS_instance_buffer.get_allocation(), &allocation_info);
+        vmaGetAllocationInfo(ctx.get_allocator().get(), BLAS_instance_buffer.get_allocation(), &allocation_info);
         memcpy(allocation_info.pMappedData, &BLAS_instance, sizeof(vk::AccelerationStructureInstanceKHR));
     }
 
     vk::BufferDeviceAddressInfo BLAS_instance_buffer_address_info{
         .buffer = BLAS_instance_buffer.get()
     };
-    auto BLAS_instance_device_address = device.get().getBufferAddress(BLAS_instance_buffer_address_info);
+    auto BLAS_instance_device_address = ctx.get_device().get().getBufferAddress(BLAS_instance_buffer_address_info);
 
     vk::AccelerationStructureGeometryInstancesDataKHR TLAS_geometry_instances_data{
         .arrayOfPointers = vk::False,
@@ -372,12 +353,12 @@ void init_vulkan(GLFWwindow* window) {
     std::vector<uint32_t> TLAS_max_primitive_counts(1);
     TLAS_max_primitive_counts[0] = TLAS_build_range_info.primitiveCount;
 
-    auto TLAS_build_sizes_info = device.get().getAccelerationStructureBuildSizesKHR(
+    auto TLAS_build_sizes_info = ctx.get_device().get().getAccelerationStructureBuildSizesKHR(
         vk::AccelerationStructureBuildTypeKHR::eDevice,
         TLAS_build_geometry_info,
         TLAS_max_primitive_counts);
 
-    auto TLAS_buffer = Buffer(allocator,
+    auto TLAS_buffer = Buffer(ctx.get_allocator(),
                               TLAS_build_sizes_info.accelerationStructureSize,
                               vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR
                               /*    | vk::BufferUsageFlagBits::eShaderDeviceAddress*/,
@@ -389,11 +370,11 @@ void init_vulkan(GLFWwindow* window) {
         .type = vk::AccelerationStructureTypeKHR::eTopLevel,
     };
 
-    auto TLAS = device.get().createAccelerationStructureKHR(TLAS_create_info);
+    auto TLAS = ctx.get_device().get().createAccelerationStructureKHR(TLAS_create_info);
 
     // Build Top Level Acceleration Structure
 
-    auto TLAS_scratch_buffer = Buffer(allocator,
+    auto TLAS_scratch_buffer = Buffer(ctx.get_allocator(),
                                       TLAS_build_sizes_info.buildScratchSize,
                                       vk::BufferUsageFlagBits::eStorageBuffer |
                                       vk::BufferUsageFlagBits::eShaderDeviceAddress,
@@ -402,7 +383,7 @@ void init_vulkan(GLFWwindow* window) {
     vk::BufferDeviceAddressInfo TLAS_scratch_buffer_device_address_info{
         .buffer = TLAS_scratch_buffer.get(),
     };
-    auto TLAS_scratch_buffer_device_address = device.get().getBufferAddress(TLAS_scratch_buffer_device_address_info);
+    auto TLAS_scratch_buffer_device_address = ctx.get_device().get().getBufferAddress(TLAS_scratch_buffer_device_address_info);
 
     TLAS_build_geometry_info.dstAccelerationStructure = TLAS;
     TLAS_build_geometry_info.scratchData = TLAS_scratch_buffer_device_address;
@@ -411,12 +392,12 @@ void init_vulkan(GLFWwindow* window) {
 
     // Ray Trace Image
 
-    auto queue_family_index_u32 = device.get_queue_family_index();
+    auto queue_family_index_u32 = ctx.get_device().get_queue_family_index();
 
     vk::ImageCreateInfo RT_image_create_info{
         .imageType = vk::ImageType::e2D,
-        .format = sRGB_to_UNorm(swapchain.get_surface_format().format),
-        .extent = vk::Extent3D{swapchain.get_extent().width, swapchain.get_extent().height, 1},
+        .format = sRGB_to_UNorm(ctx.get_swapchain().get_surface_format().format),
+        .extent = vk::Extent3D{ctx.get_swapchain().get_extent().width, ctx.get_swapchain().get_extent().height, 1},
         .mipLevels = 1,
         .arrayLayers = 1,
         .samples = vk::SampleCountFlagBits::e1,
@@ -428,22 +409,22 @@ void init_vulkan(GLFWwindow* window) {
         .initialLayout = vk::ImageLayout::eUndefined,
     };
 
-    auto RT_image = Image(RT_image_create_info, allocator);
+    auto RT_image = Image(RT_image_create_info, ctx.get_allocator());
 
     vk::ImageViewCreateInfo ray_trace_image_view_create_info{
         .image = RT_image.get(),
         .viewType = vk::ImageViewType::e2D,
-        .format = sRGB_to_UNorm(swapchain.get_surface_format().format),
+        .format = sRGB_to_UNorm(ctx.get_swapchain().get_surface_format().format),
         .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
     };
-    auto RT_image_view = device.get().createImageView(ray_trace_image_view_create_info);
+    auto RT_image_view = ctx.get_device().get().createImageView(ray_trace_image_view_create_info);
 
     layout_transition(single_time_encoder.get_cmd(),
                       RT_image.get(),
                       vk::ImageLayout::eUndefined,
                       vk::ImageLayout::eGeneral);
 
-    single_time_encoder.submit(device.get_queue());
+    single_time_encoder.submit(ctx.get_device().get_queue());
 
     // Push Descriptors & Pipeline Layout
 
@@ -471,7 +452,7 @@ void init_vulkan(GLFWwindow* window) {
         .pBindings = bindings.data(),
     };
 
-    auto descriptor_set_layout = device.get().createDescriptorSetLayout(descriptor_set_layout_create_info);
+    auto descriptor_set_layout = ctx.get_device().get().createDescriptorSetLayout(descriptor_set_layout_create_info);
 
     vk::WriteDescriptorSetAccelerationStructureKHR write_AS_info{
         .accelerationStructureCount = 1,
@@ -504,7 +485,7 @@ void init_vulkan(GLFWwindow* window) {
         .pSetLayouts = &*descriptor_set_layout,
     };
 
-    auto pipeline_layout = device.get().createPipelineLayout(pipeline_layout_create_info);
+    auto pipeline_layout = ctx.get_device().get().createPipelineLayout(pipeline_layout_create_info);
 
     // Ray Tracing Pipeline
 
@@ -513,21 +494,21 @@ void init_vulkan(GLFWwindow* window) {
         .codeSize = ray_gen_shader_code.size() * sizeof(char),
         .pCode = reinterpret_cast<const uint32_t*>(ray_gen_shader_code.data()),
     };
-    auto ray_gen_shader_module = device.get().createShaderModule(ray_gen_shader_module_create_info);
+    auto ray_gen_shader_module = ctx.get_device().get().createShaderModule(ray_gen_shader_module_create_info);
 
     auto ray_miss_shader_code = read_file("../src/shaders/spirv/raytrace.rmiss.spv");
     vk::ShaderModuleCreateInfo ray_miss_shader_module_create_info{
         .codeSize = ray_miss_shader_code.size() * sizeof(char),
         .pCode = reinterpret_cast<const uint32_t*>(ray_miss_shader_code.data()),
     };
-    auto ray_miss_shader_module = device.get().createShaderModule(ray_miss_shader_module_create_info);
+    auto ray_miss_shader_module = ctx.get_device().get().createShaderModule(ray_miss_shader_module_create_info);
 
     auto closest_hit_shader_code = read_file("../src/shaders/spirv/raytrace.rchit.spv");
     vk::ShaderModuleCreateInfo closest_hit_shader_module_create_info{
         .codeSize = closest_hit_shader_code.size() * sizeof(char),
         .pCode = reinterpret_cast<const uint32_t*>(closest_hit_shader_code.data()),
     };
-    auto closest_hit_shader_module = device.get().createShaderModule(closest_hit_shader_module_create_info);
+    auto closest_hit_shader_module = ctx.get_device().get().createShaderModule(closest_hit_shader_module_create_info);
 
     std::vector shader_stage_create_info_list = {
         vk::PipelineShaderStageCreateInfo{
@@ -571,11 +552,11 @@ void init_vulkan(GLFWwindow* window) {
         .layout = pipeline_layout,
     };
 
-    auto RT_pipeline = device.get().createRayTracingPipelineKHR(nullptr, nullptr, RT_pipeline_create_info);
+    auto RT_pipeline = ctx.get_device().get().createRayTracingPipelineKHR(nullptr, nullptr, RT_pipeline_create_info);
 
     // Shader Binding Table
 
-    auto RT_pipeline_props_chain = adapter.get().getProperties2<
+    auto RT_pipeline_props_chain = ctx.get_adapter().get().getProperties2<
         vk::PhysicalDeviceProperties2,
         vk::PhysicalDeviceRayTracingPipelinePropertiesKHR
     >();
@@ -613,7 +594,7 @@ void init_vulkan(GLFWwindow* window) {
     vk::StridedDeviceAddressRegionKHR rmiss_region{};
     vk::StridedDeviceAddressRegionKHR rchit_region{};
 
-    auto SBT_buffer = Buffer(allocator,
+    auto SBT_buffer = Buffer(ctx.get_allocator(),
                              buffer_size,
                              vk::BufferUsageFlagBits::eShaderDeviceAddress |
                              vk::BufferUsageFlagBits::eShaderBindingTableKHR,
@@ -623,11 +604,11 @@ void init_vulkan(GLFWwindow* window) {
         vk::BufferDeviceAddressInfo SBT_buffer_address_info{
             .buffer = SBT_buffer.get(),
         };
-        vk::DeviceAddress SBT_address = device.get().getBufferAddress(
+        vk::DeviceAddress SBT_address = ctx.get_device().get().getBufferAddress(
             SBT_buffer_address_info);
 
         VmaAllocationInfo allocation_info;
-        vmaGetAllocationInfo(allocator.get(), SBT_buffer.get_allocation(), &allocation_info);
+        vmaGetAllocationInfo(ctx.get_allocator().get(), SBT_buffer.get_allocation(), &allocation_info);
 
         auto* p_data = static_cast<uint8_t*>(allocation_info.pMappedData);
 
@@ -653,43 +634,44 @@ void init_vulkan(GLFWwindow* window) {
 
     constexpr int frames_in_flight = 2;
 
-    auto encoder = Encoder(device, frames_in_flight);
+    auto encoder = Encoder(ctx.get_device(), frames_in_flight);
 
     for (size_t i = 0; i < frames_in_flight; ++i) {
         vk::FenceCreateInfo fence_create_info{
             .flags = vk::FenceCreateFlagBits::eSignaled
         };
-        render_fences.emplace_back(device.get(), fence_create_info);
+        render_fences.emplace_back(ctx.get_device().get(), fence_create_info);
 
         vk::SemaphoreCreateInfo semaphore_info;
-        image_available_semaphores.emplace_back(device.get(), semaphore_info);
+        image_available_semaphores.emplace_back(ctx.get_device().get(), semaphore_info);
     }
 
-    for (size_t i = 0; i < swapchain.get_images().size(); ++i) {
+    for (size_t i = 0; i < ctx.get_swapchain().get_images().size(); ++i) {
         vk::SemaphoreCreateInfo semaphore_info;
-        render_finished_semaphores.emplace_back(device.get(), semaphore_info);
+        render_finished_semaphores.emplace_back(ctx.get_device().get(), semaphore_info);
     }
 
     uint32_t frame_index = 0;
 
-    device.get_queue().waitIdle();
+    ctx.get_device().get_queue().waitIdle();
 
     while (!glfwWindowShouldClose(window)) {
-        (void) device.get().waitForFences({*render_fences[frame_index]}, vk::True, std::numeric_limits<uint64_t>::max());
-        device.get().resetFences({*render_fences[frame_index]});
+        (void) ctx.get_device().get().
+                   waitForFences({*render_fences[frame_index]}, vk::True, std::numeric_limits<uint64_t>::max());
+        ctx.get_device().get().resetFences({*render_fences[frame_index]});
 
         uint32_t image_index;
 
         auto& current_image_available_semaphore = image_available_semaphores[frame_index];
 
         vk::AcquireNextImageInfoKHR acquire_info{
-            .swapchain = swapchain.get(),
+            .swapchain = ctx.get_swapchain().get(),
             .timeout = std::numeric_limits<uint64_t>::max(),
             .semaphore = current_image_available_semaphore,
             .deviceMask = 1,
         };
-        image_index = device.get().acquireNextImage2KHR(acquire_info).value;
-        auto swapchain_image = swapchain.get_images()[image_index];
+        image_index = ctx.get_device().get().acquireNextImage2KHR(acquire_info).value;
+        auto swapchain_image = ctx.get_swapchain().get_images()[image_index];
 
         auto& current_render_finished_semaphore = render_finished_semaphores[image_index];
 
@@ -706,7 +688,7 @@ void init_vulkan(GLFWwindow* window) {
         vk::ImageCopy copy_region{
             .srcSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
             .dstSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
-            .extent = vk::Extent3D{swapchain.get_extent().width, swapchain.get_extent().height, 1},
+            .extent = vk::Extent3D{ctx.get_swapchain().get_extent().width, ctx.get_swapchain().get_extent().height, 1},
         };
 
         cmd.copyImage(RT_image.get(),
@@ -734,17 +716,17 @@ void init_vulkan(GLFWwindow* window) {
             .pSignalSemaphores = &*current_render_finished_semaphore,
         };
 
-        device.get_queue().submit(render_submit_info, *render_fences[frame_index]);
+        ctx.get_device().get_queue().submit(render_submit_info, *render_fences[frame_index]);
 
         vk::PresentInfoKHR present_info{
             .waitSemaphoreCount = 1,
             .pWaitSemaphores = &*current_render_finished_semaphore,
             .swapchainCount = 1,
-            .pSwapchains = &*swapchain.get(),
+            .pSwapchains = &*ctx.get_swapchain().get(),
             .pImageIndices = &image_index,
         };
 
-        (void) device.get_queue().presentKHR(present_info);
+        (void) ctx.get_device().get_queue().presentKHR(present_info);
 
         static auto last_update_time = std::chrono::high_resolution_clock::now();
         static int frame_count = 0;
@@ -769,7 +751,7 @@ void init_vulkan(GLFWwindow* window) {
         frame_index = (frame_index + 1) % frames_in_flight;
     }
 
-    device.get().waitIdle();
+    ctx.get_device().get().waitIdle();
 }
 
 int main() {
