@@ -274,7 +274,7 @@ void init_vulkan(GLFWwindow* window) {
                                       BLAS_build_sizes_info.buildScratchSize,
                                       vk::BufferUsageFlagBits::eStorageBuffer |
                                       vk::BufferUsageFlagBits::eShaderDeviceAddress,
-                                      VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+                                      0);
 
     vk::BufferDeviceAddressInfo BLAS_scratch_buffer_device_address_info{
         .buffer = BLAS_scratch_buffer.get(),
@@ -397,7 +397,7 @@ void init_vulkan(GLFWwindow* window) {
                                       TLAS_build_sizes_info.buildScratchSize,
                                       vk::BufferUsageFlagBits::eStorageBuffer |
                                       vk::BufferUsageFlagBits::eShaderDeviceAddress,
-                                      VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+                                      0);
 
     vk::BufferDeviceAddressInfo TLAS_scratch_buffer_device_address_info{
         .buffer = TLAS_scratch_buffer.get(),

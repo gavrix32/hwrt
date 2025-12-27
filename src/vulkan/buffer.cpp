@@ -42,6 +42,30 @@ Buffer::~Buffer() {
     vmaDestroyBuffer(vma_allocator, this->handle, vma_allocation);
 }
 
+Buffer::Buffer(Buffer&& other) noexcept
+    : handle(other.handle),
+      vma_allocation(other.vma_allocation),
+      vma_allocator(other.vma_allocator) {
+    other.handle = nullptr;
+    other.vma_allocation = nullptr;
+}
+
+Buffer& Buffer::operator=(Buffer&& other) noexcept {
+    if (this == &other) {
+        return *this;
+    }
+
+    if (handle) {
+        vmaDestroyBuffer(vma_allocator, handle, vma_allocation);
+    }
+
+    handle = std::exchange(other.handle, nullptr);
+    vma_allocation = std::exchange(other.vma_allocation, nullptr);
+    vma_allocator = other.vma_allocator;
+
+    return *this;
+}
+
 const vk::Buffer& Buffer::get() const {
     return handle;
 }

@@ -9,6 +9,15 @@ find_package(glfw3 REQUIRED)
 add_subdirectory(external/spdlog)
 add_subdirectory(external/vma)
 
+#if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+#    add_compile_options(-fsanitize=address,undefined -g -fno-omit-frame-pointer)
+#    add_link_options(-fsanitize=address,undefined)
+#endif()
+#
+#if(MSVC)
+#    add_compile_options(/fsanitize=address)
+#endif()
+
 add_executable(hwrt
         src/main.cpp
         src/vulkan/instance.cpp
