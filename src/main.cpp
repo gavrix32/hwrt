@@ -149,10 +149,6 @@ void layout_transition(const vk::raii::CommandBuffer& cmd_buffer, const vk::Imag
     cmd_buffer.pipelineBarrier2(dependency_info);
 }
 
-uint32_t round_up(const uint32_t value, const uint32_t alignment) {
-    return (value + alignment - 1) / alignment * alignment;
-}
-
 void init_vulkan(GLFWwindow* window) {
     auto instance = Instance(validation);
 
@@ -417,7 +413,7 @@ void init_vulkan(GLFWwindow* window) {
 
     auto queue_family_index_u32 = device.get_queue_family_index();
 
-    vk::ImageCreateInfo ray_trace_image_create_info{
+    vk::ImageCreateInfo RT_image_create_info{
         .imageType = vk::ImageType::e2D,
         .format = sRGB_to_UNorm(swapchain.get_surface_format().format),
         .extent = vk::Extent3D{swapchain.get_extent().width, swapchain.get_extent().height, 1},
@@ -432,18 +428,18 @@ void init_vulkan(GLFWwindow* window) {
         .initialLayout = vk::ImageLayout::eUndefined,
     };
 
-    auto ray_trace_image = Image(ray_trace_image_create_info, allocator);
+    auto RT_image = Image(RT_image_create_info, allocator);
 
     vk::ImageViewCreateInfo ray_trace_image_view_create_info{
-        .image = ray_trace_image.get(),
+        .image = RT_image.get(),
         .viewType = vk::ImageViewType::e2D,
         .format = sRGB_to_UNorm(swapchain.get_surface_format().format),
         .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
     };
-    auto ray_trace_image_view = device.get().createImageView(ray_trace_image_view_create_info);
+    auto RT_image_view = device.get().createImageView(ray_trace_image_view_create_info);
 
     layout_transition(single_time_encoder.get_cmd(),
-                      ray_trace_image.get(),
+                      RT_image.get(),
                       vk::ImageLayout::eUndefined,
                       vk::ImageLayout::eGeneral);
 
@@ -490,7 +486,7 @@ void init_vulkan(GLFWwindow* window) {
     };
 
     vk::DescriptorImageInfo descriptor_image_info{
-        .imageView = ray_trace_image_view,
+        .imageView = RT_image_view,
         .imageLayout = vk::ImageLayout::eGeneral,
     };
 
@@ -551,7 +547,7 @@ void init_vulkan(GLFWwindow* window) {
         },
     };
 
-    std::vector ray_tracing_shader_group_create_info_list = {
+    std::vector RT_shader_groups = {
         vk::RayTracingShaderGroupCreateInfoKHR{
             .type = vk::RayTracingShaderGroupTypeKHR::eGeneral,
             .generalShader = 0,
@@ -566,37 +562,36 @@ void init_vulkan(GLFWwindow* window) {
         },
     };
 
-    vk::RayTracingPipelineCreateInfoKHR ray_tracing_pipeline_create_info{
+    vk::RayTracingPipelineCreateInfoKHR RT_pipeline_create_info{
         .stageCount = static_cast<uint32_t>(shader_stage_create_info_list.size()),
         .pStages = shader_stage_create_info_list.data(),
-        .groupCount = static_cast<uint32_t>(ray_tracing_shader_group_create_info_list.size()),
-        .pGroups = ray_tracing_shader_group_create_info_list.data(),
+        .groupCount = static_cast<uint32_t>(RT_shader_groups.size()),
+        .pGroups = RT_shader_groups.data(),
         .maxPipelineRayRecursionDepth = 1,
         .layout = pipeline_layout,
     };
 
-    auto ray_tracing_pipeline = device.get().createRayTracingPipelineKHR(nullptr, nullptr, ray_tracing_pipeline_create_info);
+    auto RT_pipeline = device.get().createRayTracingPipelineKHR(nullptr, nullptr, RT_pipeline_create_info);
 
     // Shader Binding Table
 
-    vk::StructureChain<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>
-        ray_tracing_pipeline_properties_chain =
-            adapter.get().getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
+    auto RT_pipeline_props_chain = adapter.get().getProperties2<
+        vk::PhysicalDeviceProperties2,
+        vk::PhysicalDeviceRayTracingPipelinePropertiesKHR
+    >();
 
-    auto ray_tracing_pipeline_properties = ray_tracing_pipeline_properties_chain.get<
-        vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
+    auto RT_pipeline_props = RT_pipeline_props_chain.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
 
-    uint32_t handle_size = ray_tracing_pipeline_properties.shaderGroupHandleSize;
-    uint32_t handle_alignment = ray_tracing_pipeline_properties.shaderGroupHandleAlignment;
-    uint32_t base_alignment = ray_tracing_pipeline_properties.shaderGroupBaseAlignment;
-    uint32_t group_count = ray_tracing_pipeline_create_info.groupCount;
+    uint32_t handle_size = RT_pipeline_props.shaderGroupHandleSize;
+    uint32_t handle_alignment = RT_pipeline_props.shaderGroupHandleAlignment;
+    uint32_t base_alignment = RT_pipeline_props.shaderGroupBaseAlignment;
+    uint32_t handle_count = RT_pipeline_create_info.groupCount;
 
-    size_t data_size = handle_size * group_count;
+    // TODO: to function
+    //////////////////////////////////////////////////
+    size_t data_size = handle_size * handle_count;
 
-    std::vector<uint8_t> shader_handles;
-    shader_handles.reserve(data_size);
-
-    shader_handles = ray_tracing_pipeline.getRayTracingShaderGroupHandlesKHR<uint8_t>(0, group_count, data_size);
+    std::vector<uint8_t> shader_handles = RT_pipeline.getRayTracingShaderGroupHandlesKHR<uint8_t>(0, handle_count, data_size);
 
     auto align_up = [](uint32_t size, uint32_t alignment) {
         return (size + alignment - 1) & ~(alignment - 1);
@@ -606,11 +601,13 @@ void init_vulkan(GLFWwindow* window) {
     uint32_t rchit_size = align_up(handle_size, handle_alignment);
     uint32_t callable_size = 0;
 
-    uint32_t rmiss_offset = align_up(rgen_size, base_alignment);
+    uint32_t rgen_offset = 0;
+    uint32_t rmiss_offset = align_up(rgen_offset + rgen_size, base_alignment);
     uint32_t rchit_offset = align_up(rmiss_offset + rmiss_size, base_alignment);
     uint32_t callable_offset = align_up(rchit_offset + rchit_size, base_alignment);
 
     size_t buffer_size = callable_offset + callable_size;
+    //////////////////////////////////////////////////
 
     vk::StridedDeviceAddressRegionKHR rgen_region{};
     vk::StridedDeviceAddressRegionKHR rmiss_region{};
@@ -623,8 +620,6 @@ void init_vulkan(GLFWwindow* window) {
                              VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
     {
-        uint32_t rgen_offset = 0;
-
         vk::BufferDeviceAddressInfo SBT_buffer_address_info{
             .buffer = SBT_buffer.get(),
         };
@@ -701,11 +696,11 @@ void init_vulkan(GLFWwindow* window) {
         encoder.begin(frame_index);
         auto& cmd = encoder.get_cmd();
 
-        cmd.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, ray_tracing_pipeline);
+        cmd.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, RT_pipeline);
         cmd.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, pipeline_layout, 0, writes);
         cmd.traceRaysKHR(rgen_region, rmiss_region, rchit_region, {}, WIDTH, HEIGHT, 1);
 
-        layout_transition(cmd, ray_trace_image.get(), vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal);
+        layout_transition(cmd, RT_image.get(), vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal);
         layout_transition(cmd, swapchain_image, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
 
         vk::ImageCopy copy_region{
@@ -714,14 +709,14 @@ void init_vulkan(GLFWwindow* window) {
             .extent = vk::Extent3D{swapchain.get_extent().width, swapchain.get_extent().height, 1},
         };
 
-        cmd.copyImage(ray_trace_image.get(),
+        cmd.copyImage(RT_image.get(),
                       vk::ImageLayout::eTransferSrcOptimal,
                       swapchain_image,
                       vk::ImageLayout::eTransferDstOptimal,
                       copy_region);
 
         layout_transition(cmd, swapchain_image, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::ePresentSrcKHR);
-        layout_transition(cmd, ray_trace_image.get(), vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eGeneral);
+        layout_transition(cmd, RT_image.get(), vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eGeneral);
 
         encoder.end();
 

@@ -3,14 +3,14 @@
 class Allocator;
 
 class Buffer {
-    vk::Buffer vk_buffer;
-    VmaAllocation vma_allocation;
+    vk::Buffer handle;
+    VmaAllocation vma_allocation{};
     VmaAllocator vma_allocator;
 
 public:
     explicit Buffer(const Allocator& allocator, vk::DeviceSize size, vk::BufferUsageFlags usage,
                     VmaAllocationCreateFlags allocation_create_flags = 0);
     ~Buffer();
-    const vk::Buffer& get() const;
-    VmaAllocation get_allocation() const;
+    [[nodiscard]] const vk::Buffer& get() const;
+    [[nodiscard]] VmaAllocation get_allocation() const;
 };

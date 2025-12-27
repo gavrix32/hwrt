@@ -6,15 +6,15 @@ class Device;
 class GLFWwindow;
 
 class Swapchain {
-    vk::Extent2D vk_extent;
-    vk::SurfaceFormatKHR vk_surface_format;
-    vk::raii::SurfaceKHR vk_surface_khr;
-    vk::raii::SwapchainKHR vk_swapchain_khr;
+    vk::Extent2D extent;
+    vk::SurfaceFormatKHR format;
+    vk::raii::SurfaceKHR surface_khr;
+    vk::raii::SwapchainKHR handle;
 
 public:
     explicit Swapchain(const Instance& instance, const Adapter& adapter, const Device& device, GLFWwindow* window);
-    vk::Extent2D get_extent() const;
-    vk::SurfaceFormatKHR get_surface_format() const;
-    std::vector<vk::Image> get_images() const;
-    const vk::raii::SwapchainKHR& get() const;
+    [[nodiscard]] vk::Extent2D get_extent() const;
+    [[nodiscard]] vk::SurfaceFormatKHR get_surface_format() const;
+    [[nodiscard]] std::vector<vk::Image> get_images() const;
+    [[nodiscard]] const vk::raii::SwapchainKHR& get() const;
 };

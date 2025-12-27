@@ -35,15 +35,15 @@ Buffer::Buffer(const Allocator& allocator, const vk::DeviceSize size, const vk::
     if (result != VK_SUCCESS) {
         spdlog::error("vmaCreateBuffer failed: {}", vk::to_string(static_cast<vk::Result>(result)));
     }
-    vk_buffer = buffer;
+    handle = buffer;
 }
 
 Buffer::~Buffer() {
-    vmaDestroyBuffer(vma_allocator, this->vk_buffer, vma_allocation);
+    vmaDestroyBuffer(vma_allocator, this->handle, vma_allocation);
 }
 
 const vk::Buffer& Buffer::get() const {
-    return vk_buffer;
+    return handle;
 }
 
 VmaAllocation Buffer::get_allocation() const {

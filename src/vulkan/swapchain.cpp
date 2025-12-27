@@ -27,59 +27,70 @@ vk::Extent2D choose_extent(GLFWwindow* window, const vk::SurfaceCapabilitiesKHR&
     };
 }
 
+vk::SurfaceFormatKHR choose_format(const std::vector<vk::SurfaceFormatKHR>& available_formats) {
+    for (const auto& available_format : available_formats) {
+        if (available_format.format == vk::Format::eB8G8R8A8Srgb &&
+            available_format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
+            return available_format;
+        }
+    }
+    return available_formats[0];
+}
+
+vk::PresentModeKHR choose_present_mode(const std::vector<vk::PresentModeKHR>& available_present_modes) {
+    for (const auto& available_present_mode : available_present_modes) {
+        if (available_present_mode == vk::PresentModeKHR::eImmediate) {
+            return available_present_mode;
+        }
+    }
+    return available_present_modes[0];
+}
+
 Swapchain::Swapchain(const Instance& instance, const Adapter& adapter, const Device& device,
-                     GLFWwindow* window) : vk_swapchain_khr(nullptr), vk_surface_khr(nullptr) {
+                     GLFWwindow* window) : surface_khr(nullptr), handle(nullptr) {
     SCOPED_TIMER_NAMED("Create VkSurfaceKHR, VkSwapchainKHR");
 
     VkSurfaceKHR _surface;
     if (glfwCreateWindowSurface(*instance.get(), window, nullptr, &_surface) != 0) {
         throw std::runtime_error("Failed to create window surface");
     }
-    vk_surface_khr = vk::raii::SurfaceKHR(instance.get(), _surface);
+    surface_khr = vk::raii::SurfaceKHR(instance.get(), _surface);
 
-    const auto surface_capabilities = adapter.get().getSurfaceCapabilitiesKHR(*vk_surface_khr);
-    vk_extent = choose_extent(window, surface_capabilities);
+    const auto surface_capabilities = adapter.get().getSurfaceCapabilitiesKHR(*surface_khr);
 
-    auto available_formats = adapter.get().getSurfaceFormatsKHR(*vk_surface_khr);
-    for (const auto& available_format : available_formats) {
-        if (available_format.format == vk::Format::eB8G8R8A8Srgb &&
-            available_format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
-            vk_surface_format = available_format;
-            break;
-        }
-        vk_surface_format = available_formats[0];
-    }
+    extent = choose_extent(window, surface_capabilities);
+    format = choose_format(adapter.get().getSurfaceFormatsKHR(*surface_khr));
 
     const vk::SwapchainCreateInfoKHR swapchain_create_info{
-        .surface = *vk_surface_khr,
+        .surface = *surface_khr,
         .minImageCount = surface_capabilities.minImageCount,
-        .imageFormat = vk_surface_format.format,
-        .imageColorSpace = vk_surface_format.colorSpace,
-        .imageExtent = vk_extent,
+        .imageFormat = format.format,
+        .imageColorSpace = format.colorSpace,
+        .imageExtent = extent,
         .imageArrayLayers = 1,
         .imageUsage = vk::ImageUsageFlagBits::eTransferDst,
         .imageSharingMode = vk::SharingMode::eExclusive,
         .preTransform = surface_capabilities.currentTransform,
         .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
-        .presentMode = vk::PresentModeKHR::eImmediate,
+        .presentMode = choose_present_mode(adapter.get().getSurfacePresentModesKHR(*surface_khr)),
         .clipped = true
     };
 
-    vk_swapchain_khr = vk::raii::SwapchainKHR(device.get(), swapchain_create_info);
+    handle = vk::raii::SwapchainKHR(device.get(), swapchain_create_info);
 }
 
 vk::Extent2D Swapchain::get_extent() const {
-    return vk_extent;
+    return extent;
 }
 
 vk::SurfaceFormatKHR Swapchain::get_surface_format() const {
-    return vk_surface_format;
+    return format;
 }
 
 std::vector<vk::Image> Swapchain::get_images() const {
-    return vk_swapchain_khr.getImages();
+    return handle.getImages();
 }
 
 const vk::raii::SwapchainKHR& Swapchain::get() const {
-    return vk_swapchain_khr;
+    return handle;
 }
