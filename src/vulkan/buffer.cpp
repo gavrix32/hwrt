@@ -5,6 +5,8 @@
 
 #include "allocator.h"
 #include "buffer.h"
+
+#include "device.h"
 #include "utils.h"
 
 Buffer::Buffer(const Allocator& allocator,
@@ -13,7 +15,7 @@ Buffer::Buffer(const Allocator& allocator,
                const VmaMemoryUsage memory_usage,
                const VmaAllocationCreateFlags allocation_flags,
                const uint32_t min_alignment)
-    : vma_allocator(allocator.get()) {
+    : allocator(allocator.get()) {
     SCOPED_TIMER_NAMED("Create VkBuffer");
 
     const vk::BufferCreateInfo buffer_create_info = {
@@ -37,14 +39,14 @@ Buffer::Buffer(const Allocator& allocator,
                                               &alloc_create_info,
                                               min_alignment,
                                               &buffer,
-                                              &vma_allocation,
+                                              &allocation,
                                               &alloc_info);
     } else {
         result = vmaCreateBuffer(allocator.get(),
                                  reinterpret_cast<const VkBufferCreateInfo*>(&buffer_create_info),
                                  &alloc_create_info,
                                  &buffer,
-                                 &vma_allocation,
+                                 &allocation,
                                  &alloc_info);
     }
 
@@ -58,17 +60,17 @@ Buffer::Buffer(const Allocator& allocator,
 
 Buffer::~Buffer() {
     if (handle) {
-        vmaDestroyBuffer(vma_allocator, handle, vma_allocation);
+        vmaDestroyBuffer(allocator, handle, allocation);
     }
 }
 
 Buffer::Buffer(Buffer&& other) noexcept
     : handle(std::exchange(other.handle, nullptr)),
-      vma_allocation(std::exchange(other.vma_allocation, nullptr)),
-      vma_allocator(other.vma_allocator),
+      allocation(std::exchange(other.allocation, nullptr)),
+      allocator(other.allocator),
       mapped_data(std::exchange(other.mapped_data, nullptr)) {
     other.handle = nullptr;
-    other.vma_allocation = nullptr;
+    other.allocation = nullptr;
 }
 
 Buffer& Buffer::operator=(Buffer&& other) noexcept {
@@ -77,12 +79,12 @@ Buffer& Buffer::operator=(Buffer&& other) noexcept {
     }
 
     if (handle) {
-        vmaDestroyBuffer(vma_allocator, handle, vma_allocation);
+        vmaDestroyBuffer(allocator, handle, allocation);
     }
 
     handle = std::exchange(other.handle, nullptr);
-    vma_allocation = std::exchange(other.vma_allocation, nullptr);
-    vma_allocator = other.vma_allocator;
+    allocation = std::exchange(other.allocation, nullptr);
+    allocator = other.allocator;
     mapped_data = std::exchange(other.mapped_data, nullptr);
 
     return *this;
@@ -93,7 +95,12 @@ const vk::Buffer& Buffer::get() const {
 }
 
 VmaAllocation Buffer::get_allocation() const {
-    return vma_allocation;
+    return allocation;
+}
+
+vk::DeviceAddress Buffer::get_device_address(const Device& device) const {
+    const vk::BufferDeviceAddressInfo info{.buffer = handle};
+    return device.get().getBufferAddress(info);
 }
 
 BufferBuilder::BufferBuilder() = default;

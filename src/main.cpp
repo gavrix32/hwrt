@@ -71,7 +71,7 @@ std::vector<uint32_t> indices = {
 };
 
 // TODO: is it necessary?
-vk::Format sRGB_to_UNorm(const vk::Format format) {
+vk::Format srgb_to_unorm(const vk::Format format) {
     switch (format) {
         case vk::Format::eR8Srgb: return vk::Format::eR8Unorm;
         case vk::Format::eR8G8Srgb: return vk::Format::eR8G8Unorm;
@@ -164,8 +164,8 @@ void init_vulkan() {
         vk::PhysicalDeviceAccelerationStructurePropertiesKHR
     >();
 
-    auto RT_pipeline_props = adapter_props_chain.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
-    auto AS_props = adapter_props_chain.get<vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
+    auto rt_pipeline_props = adapter_props_chain.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
+    auto as_props = adapter_props_chain.get<vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
 
     auto vertex_buffer = BufferBuilder()
                          .size(sizeof(Vertex) * vertices.size())
@@ -189,21 +189,14 @@ void init_vulkan() {
 
     memcpy(index_buffer.mapped_ptr(), indices.data(), sizeof(u_int32_t) * indices.size());
 
-    vk::BufferDeviceAddressInfo vertex_buffer_address_info{
-        .buffer = vertex_buffer.get(),
-    };
-    vk::DeviceAddress vertex_address = ctx.get_device().get().getBufferAddress(vertex_buffer_address_info);
-
-    vk::BufferDeviceAddressInfo index_buffer_address_info{
-        .buffer = index_buffer.get(),
-    };
-    vk::DeviceAddress index_address = ctx.get_device().get().getBufferAddress(index_buffer_address_info);
+    auto vertex_address = vertex_buffer.get_device_address(ctx.get_device());
+    auto index_address = index_buffer.get_device_address(ctx.get_device());
 
     // Create Bottom Level Acceleration Structure
 
     auto triangle_count = static_cast<uint32_t>(indices.size() / 3);
 
-    vk::AccelerationStructureGeometryTrianglesDataKHR BLAS_geometry_triangles_data{
+    vk::AccelerationStructureGeometryTrianglesDataKHR blas_geometry_triangles_data{
         .vertexFormat = vk::Format::eR32G32B32Sfloat,
         .vertexData = vertex_address,
         .vertexStride = sizeof(Vertex),
@@ -212,74 +205,71 @@ void init_vulkan() {
         .indexData = index_address,
     };
 
-    vk::AccelerationStructureGeometryKHR BLAS_geometry{
+    vk::AccelerationStructureGeometryKHR blas_geometry{
         .geometryType = vk::GeometryTypeKHR::eTriangles,
-        .geometry = BLAS_geometry_triangles_data,
+        .geometry = blas_geometry_triangles_data,
         .flags = vk::GeometryFlagBitsKHR::eOpaque,
     };
 
-    vk::AccelerationStructureBuildRangeInfoKHR BLAS_build_range_info{
+    vk::AccelerationStructureBuildRangeInfoKHR blas_build_range_info{
         .primitiveCount = triangle_count,
         .primitiveOffset = 0,
         .firstVertex = 0,
         .transformOffset = 0,
     };
 
-    vk::AccelerationStructureBuildGeometryInfoKHR BLAS_build_geometry_info{
+    vk::AccelerationStructureBuildGeometryInfoKHR blas_build_geometry_info{
         .type = vk::AccelerationStructureTypeKHR::eBottomLevel,
         .mode = vk::BuildAccelerationStructureModeKHR::eBuild,
         .geometryCount = 1,
-        .pGeometries = &BLAS_geometry,
+        .pGeometries = &blas_geometry,
     };
 
-    std::vector<uint32_t> BLAS_max_primitive_counts(1);
-    BLAS_max_primitive_counts[0] = BLAS_build_range_info.primitiveCount;
+    std::vector<uint32_t> blas_max_primitive_counts(1);
+    blas_max_primitive_counts[0] = blas_build_range_info.primitiveCount;
 
-    auto BLAS_build_sizes_info = ctx.get_device().get().getAccelerationStructureBuildSizesKHR(
+    auto blas_build_sizes_info = ctx.get_device().get().getAccelerationStructureBuildSizesKHR(
         vk::AccelerationStructureBuildTypeKHR::eDevice,
-        BLAS_build_geometry_info,
-        BLAS_max_primitive_counts);
+        blas_build_geometry_info,
+        blas_max_primitive_counts);
 
-    auto BLAS_buffer = BufferBuilder()
-                       .size(BLAS_build_sizes_info.accelerationStructureSize)
+    auto blas_buffer = BufferBuilder()
+                       .size(blas_build_sizes_info.accelerationStructureSize)
                        .usage(
                            vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR |
                            vk::BufferUsageFlagBits::eShaderDeviceAddress)
                        .build(ctx.get_allocator());
 
-    vk::AccelerationStructureCreateInfoKHR BLAS_create_info{
-        .buffer = BLAS_buffer.get(),
-        .size = BLAS_build_sizes_info.accelerationStructureSize,
+    vk::AccelerationStructureCreateInfoKHR blas_create_info{
+        .buffer = blas_buffer.get(),
+        .size = blas_build_sizes_info.accelerationStructureSize,
         .type = vk::AccelerationStructureTypeKHR::eBottomLevel,
     };
 
     auto single_time_encoder = SingleTimeEncoder(ctx.get_device());
 
-    auto BLAS = ctx.get_device().get().createAccelerationStructureKHR(BLAS_create_info);
+    auto blas = ctx.get_device().get().createAccelerationStructureKHR(blas_create_info);
 
     // Build Bottom Level Acceleration Structure
 
-    auto scratch_alignment = AS_props.minAccelerationStructureScratchOffsetAlignment;
+    auto scratch_alignment = as_props.minAccelerationStructureScratchOffsetAlignment;
 
-    auto BLAS_scratch_buffer = BufferBuilder()
-                               .size(BLAS_build_sizes_info.buildScratchSize)
+    auto blas_scratch_buffer = BufferBuilder()
+                               .size(blas_build_sizes_info.buildScratchSize)
                                .usage(
                                    vk::BufferUsageFlagBits::eStorageBuffer |
                                    vk::BufferUsageFlagBits::eShaderDeviceAddress)
                                .min_alignment(scratch_alignment)
                                .build(ctx.get_allocator());
 
-    vk::BufferDeviceAddressInfo BLAS_scratch_buffer_device_address_info{
-        .buffer = BLAS_scratch_buffer.get(),
-    };
-    auto BLAS_scratch_buffer_device_address = ctx.get_device().get().getBufferAddress(BLAS_scratch_buffer_device_address_info);
+    auto blas_scratch_buffer_device_address = blas_scratch_buffer.get_device_address(ctx.get_device());
 
-    BLAS_build_geometry_info.dstAccelerationStructure = BLAS;
-    BLAS_build_geometry_info.scratchData = BLAS_scratch_buffer_device_address;
+    blas_build_geometry_info.dstAccelerationStructure = blas;
+    blas_build_geometry_info.scratchData = blas_scratch_buffer_device_address;
 
-    single_time_encoder.get_cmd().buildAccelerationStructuresKHR({BLAS_build_geometry_info}, {&BLAS_build_range_info});
+    single_time_encoder.get_cmd().buildAccelerationStructuresKHR({blas_build_geometry_info}, {&blas_build_range_info});
 
-    vk::MemoryBarrier2 AS_build_barrier{
+    vk::MemoryBarrier2 as_build_barrier{
         .srcStageMask = vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
         .srcAccessMask = vk::AccessFlagBits2::eAccelerationStructureWriteKHR,
         .dstStageMask = vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
@@ -288,17 +278,17 @@ void init_vulkan() {
 
     vk::DependencyInfo dependency_info_as_build{
         .memoryBarrierCount = 1,
-        .pMemoryBarriers = &AS_build_barrier,
+        .pMemoryBarriers = &as_build_barrier,
     };
 
     single_time_encoder.get_cmd().pipelineBarrier2(dependency_info_as_build);
 
     // Create Top Level Acceleration Structure
 
-    vk::AccelerationStructureDeviceAddressInfoKHR BLAS_device_address_info{
-        .accelerationStructure = BLAS
+    vk::AccelerationStructureDeviceAddressInfoKHR blas_device_address_info{
+        .accelerationStructure = blas
     };
-    auto BLAS_device_address = ctx.get_device().get().getAccelerationStructureAddressKHR(BLAS_device_address_info);
+    auto blas_device_address = ctx.get_device().get().getAccelerationStructureAddressKHR(blas_device_address_info);
 
     vk::TransformMatrixKHR transform{
         std::array<std::array<float, 4>, 3>{
@@ -310,16 +300,16 @@ void init_vulkan() {
         }
     };
 
-    vk::AccelerationStructureInstanceKHR BLAS_instance{
+    vk::AccelerationStructureInstanceKHR blas_instance{
         .transform = transform,
         .instanceCustomIndex = 0,
         .mask = 0xFF,
         .instanceShaderBindingTableRecordOffset = 0,
         .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
-        .accelerationStructureReference = BLAS_device_address
+        .accelerationStructureReference = blas_device_address
     };
 
-    auto BLAS_instance_buffer = BufferBuilder()
+    auto blas_instance_buffer = BufferBuilder()
                                 .size(sizeof(vk::AccelerationStructureInstanceKHR))
                                 .usage(
                                     vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR |
@@ -328,87 +318,81 @@ void init_vulkan() {
                                                   VMA_ALLOCATION_CREATE_MAPPED_BIT)
                                 .build(ctx.get_allocator());
 
-    memcpy(BLAS_instance_buffer.mapped_ptr(), &BLAS_instance, sizeof(vk::AccelerationStructureInstanceKHR));
+    memcpy(blas_instance_buffer.mapped_ptr(), &blas_instance, sizeof(vk::AccelerationStructureInstanceKHR));
 
-    vk::BufferDeviceAddressInfo BLAS_instance_buffer_address_info{
-        .buffer = BLAS_instance_buffer.get()
-    };
-    auto BLAS_instance_device_address = ctx.get_device().get().getBufferAddress(BLAS_instance_buffer_address_info);
+    auto blas_instance_device_address = blas_instance_buffer.get_device_address(ctx.get_device());
 
-    vk::AccelerationStructureGeometryInstancesDataKHR TLAS_geometry_instances_data{
+    vk::AccelerationStructureGeometryInstancesDataKHR tlas_geometry_instances_data{
         .arrayOfPointers = vk::False,
-        .data = BLAS_instance_device_address,
+        .data = blas_instance_device_address,
     };
 
-    vk::AccelerationStructureGeometryKHR TLAS_geometry{
+    vk::AccelerationStructureGeometryKHR tlas_geometry{
         .geometryType = vk::GeometryTypeKHR::eInstances,
-        .geometry = TLAS_geometry_instances_data,
+        .geometry = tlas_geometry_instances_data,
         .flags = vk::GeometryFlagBitsKHR::eOpaque,
     };
 
-    vk::AccelerationStructureBuildRangeInfoKHR TLAS_build_range_info{
+    vk::AccelerationStructureBuildRangeInfoKHR tlas_build_range_info{
         .primitiveCount = 1,
         .primitiveOffset = 0,
         .firstVertex = 0,
         .transformOffset = 0,
     };
 
-    vk::AccelerationStructureBuildGeometryInfoKHR TLAS_build_geometry_info{
+    vk::AccelerationStructureBuildGeometryInfoKHR tlas_build_geometry_info{
         .type = vk::AccelerationStructureTypeKHR::eTopLevel,
         .mode = vk::BuildAccelerationStructureModeKHR::eBuild,
         .geometryCount = 1,
-        .pGeometries = &TLAS_geometry,
+        .pGeometries = &tlas_geometry,
     };
 
-    std::vector<uint32_t> TLAS_max_primitive_counts(1);
-    TLAS_max_primitive_counts[0] = TLAS_build_range_info.primitiveCount;
+    std::vector<uint32_t> tlas_max_primitive_counts(1);
+    tlas_max_primitive_counts[0] = tlas_build_range_info.primitiveCount;
 
-    auto TLAS_build_sizes_info = ctx.get_device().get().getAccelerationStructureBuildSizesKHR(
+    auto tlas_build_sizes_info = ctx.get_device().get().getAccelerationStructureBuildSizesKHR(
         vk::AccelerationStructureBuildTypeKHR::eDevice,
-        TLAS_build_geometry_info,
-        TLAS_max_primitive_counts);
+        tlas_build_geometry_info,
+        tlas_max_primitive_counts);
 
-    auto TLAS_buffer = BufferBuilder()
-                       .size(TLAS_build_sizes_info.accelerationStructureSize)
+    auto tlas_buffer = BufferBuilder()
+                       .size(tlas_build_sizes_info.accelerationStructureSize)
                        .usage(
                            vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR)
                        .build(ctx.get_allocator());
 
-    vk::AccelerationStructureCreateInfoKHR TLAS_create_info{
-        .buffer = TLAS_buffer.get(),
-        .size = TLAS_build_sizes_info.accelerationStructureSize,
+    vk::AccelerationStructureCreateInfoKHR tlas_create_info{
+        .buffer = tlas_buffer.get(),
+        .size = tlas_build_sizes_info.accelerationStructureSize,
         .type = vk::AccelerationStructureTypeKHR::eTopLevel,
     };
 
-    auto TLAS = ctx.get_device().get().createAccelerationStructureKHR(TLAS_create_info);
+    auto tlas = ctx.get_device().get().createAccelerationStructureKHR(tlas_create_info);
 
     // Build Top Level Acceleration Structure
 
-    auto TLAS_scratch_buffer = BufferBuilder()
-                               .size(TLAS_build_sizes_info.buildScratchSize)
+    auto tlas_scratch_buffer = BufferBuilder()
+                               .size(tlas_build_sizes_info.buildScratchSize)
                                .usage(
                                    vk::BufferUsageFlagBits::eStorageBuffer |
                                    vk::BufferUsageFlagBits::eShaderDeviceAddress)
                                .min_alignment(scratch_alignment)
                                .build(ctx.get_allocator());
 
-    vk::BufferDeviceAddressInfo TLAS_scratch_buffer_device_address_info{
-        .buffer = TLAS_scratch_buffer.get(),
-    };
-    auto TLAS_scratch_buffer_device_address = ctx.get_device().get().getBufferAddress(TLAS_scratch_buffer_device_address_info);
+    auto tlas_scratch_buffer_device_address = tlas_scratch_buffer.get_device_address(ctx.get_device());
 
-    TLAS_build_geometry_info.dstAccelerationStructure = TLAS;
-    TLAS_build_geometry_info.scratchData = TLAS_scratch_buffer_device_address;
+    tlas_build_geometry_info.dstAccelerationStructure = tlas;
+    tlas_build_geometry_info.scratchData = tlas_scratch_buffer_device_address;
 
-    single_time_encoder.get_cmd().buildAccelerationStructuresKHR({TLAS_build_geometry_info}, {&TLAS_build_range_info});
+    single_time_encoder.get_cmd().buildAccelerationStructuresKHR({tlas_build_geometry_info}, {&tlas_build_range_info});
 
     // Ray Trace Image
 
     auto queue_family_index_u32 = ctx.get_device().get_queue_family_index();
 
-    vk::ImageCreateInfo RT_image_create_info{
+    vk::ImageCreateInfo rt_image_create_info{
         .imageType = vk::ImageType::e2D,
-        .format = sRGB_to_UNorm(ctx.get_swapchain().get_surface_format().format),
+        .format = srgb_to_unorm(ctx.get_swapchain().get_surface_format().format),
         .extent = vk::Extent3D{ctx.get_swapchain().get_extent().width, ctx.get_swapchain().get_extent().height, 1},
         .mipLevels = 1,
         .arrayLayers = 1,
@@ -421,18 +405,18 @@ void init_vulkan() {
         .initialLayout = vk::ImageLayout::eUndefined,
     };
 
-    auto RT_image = Image(RT_image_create_info, ctx.get_allocator());
+    auto rt_image = Image(rt_image_create_info, ctx.get_allocator());
 
-    vk::ImageViewCreateInfo RT_image_view_create_info{
-        .image = RT_image.get(),
+    vk::ImageViewCreateInfo rt_image_view_create_info{
+        .image = rt_image.get(),
         .viewType = vk::ImageViewType::e2D,
-        .format = sRGB_to_UNorm(ctx.get_swapchain().get_surface_format().format),
+        .format = srgb_to_unorm(ctx.get_swapchain().get_surface_format().format),
         .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
     };
-    auto RT_image_view = ctx.get_device().get().createImageView(RT_image_view_create_info);
+    auto rt_image_view = ctx.get_device().get().createImageView(rt_image_view_create_info);
 
     layout_transition(single_time_encoder.get_cmd(),
-                      RT_image.get(),
+                      rt_image.get(),
                       vk::ImageLayout::eUndefined,
                       vk::ImageLayout::eGeneral);
 
@@ -442,13 +426,13 @@ void init_vulkan() {
 
     std::vector<vk::DescriptorSetLayoutBinding> bindings;
 
-    vk::DescriptorSetLayoutBinding AS_binding{
+    vk::DescriptorSetLayoutBinding as_binding{
         .binding = 0,
         .descriptorType = vk::DescriptorType::eAccelerationStructureKHR,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eAll,
     };
-    bindings.push_back(AS_binding);
+    bindings.push_back(as_binding);
 
     vk::DescriptorSetLayoutBinding image_binding{
         .binding = 1,
@@ -466,20 +450,20 @@ void init_vulkan() {
 
     auto descriptor_set_layout = ctx.get_device().get().createDescriptorSetLayout(descriptor_set_layout_create_info);
 
-    vk::WriteDescriptorSetAccelerationStructureKHR write_AS_info{
+    vk::WriteDescriptorSetAccelerationStructureKHR write_as_info{
         .accelerationStructureCount = 1,
-        .pAccelerationStructures = &*TLAS,
+        .pAccelerationStructures = &*tlas,
     };
 
-    vk::WriteDescriptorSet write_AS{
-        .pNext = &write_AS_info,
+    vk::WriteDescriptorSet write_as{
+        .pNext = &write_as_info,
         .dstBinding = 0,
         .descriptorCount = 1,
         .descriptorType = vk::DescriptorType::eAccelerationStructureKHR,
     };
 
     vk::DescriptorImageInfo descriptor_image_info{
-        .imageView = RT_image_view,
+        .imageView = rt_image_view,
         .imageLayout = vk::ImageLayout::eGeneral,
     };
 
@@ -490,7 +474,7 @@ void init_vulkan() {
         .pImageInfo = &descriptor_image_info,
     };
 
-    std::vector writes{write_AS, write_image};
+    std::vector writes{write_as, write_image};
 
     vk::PipelineLayoutCreateInfo pipeline_layout_create_info{
         .setLayoutCount = 1,
@@ -540,7 +524,7 @@ void init_vulkan() {
         },
     };
 
-    std::vector RT_shader_groups = {
+    std::vector rt_shader_groups = {
         vk::RayTracingShaderGroupCreateInfoKHR{
             .type = vk::RayTracingShaderGroupTypeKHR::eGeneral,
             .generalShader = 0,
@@ -555,29 +539,29 @@ void init_vulkan() {
         },
     };
 
-    vk::RayTracingPipelineCreateInfoKHR RT_pipeline_create_info{
+    vk::RayTracingPipelineCreateInfoKHR rt_pipeline_create_info{
         .stageCount = static_cast<uint32_t>(shader_stage_create_info_list.size()),
         .pStages = shader_stage_create_info_list.data(),
-        .groupCount = static_cast<uint32_t>(RT_shader_groups.size()),
-        .pGroups = RT_shader_groups.data(),
+        .groupCount = static_cast<uint32_t>(rt_shader_groups.size()),
+        .pGroups = rt_shader_groups.data(),
         .maxPipelineRayRecursionDepth = 1,
         .layout = pipeline_layout,
     };
 
-    auto RT_pipeline = ctx.get_device().get().createRayTracingPipelineKHR(nullptr, nullptr, RT_pipeline_create_info);
+    auto rt_pipeline = ctx.get_device().get().createRayTracingPipelineKHR(nullptr, nullptr, rt_pipeline_create_info);
 
     // Shader Binding Table
 
-    uint32_t handle_size = RT_pipeline_props.shaderGroupHandleSize;
-    uint32_t handle_alignment = RT_pipeline_props.shaderGroupHandleAlignment;
-    uint32_t base_alignment = RT_pipeline_props.shaderGroupBaseAlignment;
-    uint32_t handle_count = RT_pipeline_create_info.groupCount;
+    uint32_t handle_size = rt_pipeline_props.shaderGroupHandleSize;
+    uint32_t handle_alignment = rt_pipeline_props.shaderGroupHandleAlignment;
+    uint32_t base_alignment = rt_pipeline_props.shaderGroupBaseAlignment;
+    uint32_t handle_count = rt_pipeline_create_info.groupCount;
 
     // TODO: to function
     //////////////////////////////////////////////////
     size_t data_size = handle_size * handle_count;
 
-    std::vector<uint8_t> shader_handles = RT_pipeline.getRayTracingShaderGroupHandlesKHR<uint8_t>(0, handle_count, data_size);
+    std::vector<uint8_t> shader_handles = rt_pipeline.getRayTracingShaderGroupHandlesKHR<uint8_t>(0, handle_count, data_size);
 
     auto align_up = [](uint32_t size, uint32_t alignment) {
         return (size + alignment - 1) & ~(alignment - 1);
@@ -599,7 +583,7 @@ void init_vulkan() {
     vk::StridedDeviceAddressRegionKHR rmiss_region{};
     vk::StridedDeviceAddressRegionKHR rchit_region{};
 
-    auto SBT_buffer = BufferBuilder()
+    auto sbt_buffer = BufferBuilder()
                       .size(buffer_size)
                       .usage(
                           vk::BufferUsageFlagBits::eShaderDeviceAddress |
@@ -608,26 +592,22 @@ void init_vulkan() {
                       .build(ctx.get_allocator());
 
     {
-        vk::BufferDeviceAddressInfo SBT_buffer_address_info{
-            .buffer = SBT_buffer.get(),
-        };
-        vk::DeviceAddress SBT_address = ctx.get_device().get().getBufferAddress(
-            SBT_buffer_address_info);
+        auto sbt_address = sbt_buffer.get_device_address(ctx.get_device());
 
-        auto* p_data = SBT_buffer.mapped_ptr<uint8_t>();
+        auto* p_data = sbt_buffer.mapped_ptr<uint8_t>();
 
         memcpy(p_data + rgen_offset, shader_handles.data() + 0 * handle_size, handle_size);
-        rgen_region.deviceAddress = SBT_address + rgen_offset;
+        rgen_region.deviceAddress = sbt_address + rgen_offset;
         rgen_region.stride = rgen_size;
         rgen_region.size = rgen_size;
 
         memcpy(p_data + rmiss_offset, shader_handles.data() + 1 * handle_size, handle_size);
-        rmiss_region.deviceAddress = SBT_address + rmiss_offset;
+        rmiss_region.deviceAddress = sbt_address + rmiss_offset;
         rmiss_region.stride = rmiss_size;
         rmiss_region.size = rmiss_size;
 
         memcpy(p_data + rchit_offset, shader_handles.data() + 2 * handle_size, handle_size);
-        rchit_region.deviceAddress = SBT_address + rchit_offset;
+        rchit_region.deviceAddress = sbt_address + rchit_offset;
         rchit_region.stride = rchit_size;
         rchit_region.size = rchit_size;
     }
@@ -674,11 +654,11 @@ void init_vulkan() {
         encoder.begin(frame_mgr.get_frame_index());
         auto& cmd = encoder.get_cmd();
 
-        cmd.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, RT_pipeline);
+        cmd.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, rt_pipeline);
         cmd.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, pipeline_layout, 0, writes);
         cmd.traceRaysKHR(rgen_region, rmiss_region, rchit_region, {}, WIDTH, HEIGHT, 1);
 
-        layout_transition(cmd, RT_image.get(), vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal);
+        layout_transition(cmd, rt_image.get(), vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal);
         layout_transition(cmd, swapchain_image, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
 
         vk::ImageCopy copy_region{
@@ -687,14 +667,14 @@ void init_vulkan() {
             .extent = vk::Extent3D{ctx.get_swapchain().get_extent().width, ctx.get_swapchain().get_extent().height, 1},
         };
 
-        cmd.copyImage(RT_image.get(),
+        cmd.copyImage(rt_image.get(),
                       vk::ImageLayout::eTransferSrcOptimal,
                       swapchain_image,
                       vk::ImageLayout::eTransferDstOptimal,
                       copy_region);
 
         layout_transition(cmd, swapchain_image, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::ePresentSrcKHR);
-        layout_transition(cmd, RT_image.get(), vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eGeneral);
+        layout_transition(cmd, rt_image.get(), vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eGeneral);
 
         encoder.end();
 
@@ -760,7 +740,6 @@ int main() {
         // Need for cleanup Vulkan RAII objects before GLFW
         init_vulkan();
     }
-
     Window::terminate();
 
     return 0;

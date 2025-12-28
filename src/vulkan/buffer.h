@@ -4,8 +4,8 @@
 
 class Buffer {
     vk::Buffer handle;
-    VmaAllocation vma_allocation{};
-    VmaAllocator vma_allocator;
+    VmaAllocator allocator;
+    VmaAllocation allocation{};
     void* mapped_data = nullptr;
 
 public:
@@ -26,6 +26,7 @@ public:
 
     [[nodiscard]] const vk::Buffer& get() const;
     [[nodiscard]] VmaAllocation get_allocation() const;
+    [[nodiscard]] vk::DeviceAddress get_device_address(const Device& device) const;
 
     template <typename T = void>
     T* mapped_ptr() const { return static_cast<T*>(mapped_data); }
