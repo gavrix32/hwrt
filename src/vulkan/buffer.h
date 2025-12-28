@@ -1,24 +1,51 @@
 #pragma once
 
+#include <vk_mem_alloc.h>
+
 class Buffer {
     vk::Buffer handle;
     VmaAllocation vma_allocation{};
     VmaAllocator vma_allocator;
+    void* mapped_data = nullptr;
 
 public:
-    explicit Buffer(const Allocator& allocator, vk::DeviceSize size, vk::BufferUsageFlags usage,
-                    VmaAllocationCreateFlags allocation_create_flags = 0);
+    explicit Buffer(const Allocator& allocator,
+                    vk::DeviceSize size,
+                    vk::BufferUsageFlags usage,
+                    VmaMemoryUsage memory_usage,
+                    VmaAllocationCreateFlags allocation_flags,
+                    uint32_t min_alignment);
 
     ~Buffer();
 
-    // Disable copy
+    // Move only
     Buffer(const Buffer&) = delete;
     Buffer& operator=(const Buffer&) = delete;
-
-    // Enable move
     Buffer(Buffer&& other) noexcept;
     Buffer& operator=(Buffer&& other) noexcept;
 
     [[nodiscard]] const vk::Buffer& get() const;
     [[nodiscard]] VmaAllocation get_allocation() const;
+
+    template <typename T = void>
+    T* mapped_ptr() const { return static_cast<T*>(mapped_data); }
+};
+
+class BufferBuilder {
+    vk::DeviceSize size_ = 0;
+    vk::BufferUsageFlags usage_;
+    VmaMemoryUsage memory_usage_ = VMA_MEMORY_USAGE_AUTO;
+    VmaAllocationCreateFlags allocation_flags_ = 0;
+    uint32_t min_alignment_ = 0;
+
+public:
+    explicit BufferBuilder();
+
+    BufferBuilder& size(vk::DeviceSize size);
+    BufferBuilder& usage(vk::BufferUsageFlags usage);
+    BufferBuilder& memory_usage(VmaMemoryUsage memory_usage);
+    BufferBuilder& allocation_flags(VmaAllocationCreateFlags allocation_flags);
+    BufferBuilder& min_alignment(uint32_t alignment);
+
+    [[nodiscard]] Buffer build(const Allocator& allocator) const;
 };

@@ -1,16 +1,19 @@
 #define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS 1
 #include <vulkan/vulkan_raii.hpp>
 
-#include <vk_mem_alloc.h>
-
 #include <spdlog/spdlog.h>
 
 #include "allocator.h"
 #include "buffer.h"
 #include "utils.h"
 
-Buffer::Buffer(const Allocator& allocator, const vk::DeviceSize size, const vk::BufferUsageFlags usage,
-               const VmaAllocationCreateFlags allocation_create_flags) : vma_allocator(allocator.get()) {
+Buffer::Buffer(const Allocator& allocator,
+               const vk::DeviceSize size,
+               const vk::BufferUsageFlags usage,
+               const VmaMemoryUsage memory_usage,
+               const VmaAllocationCreateFlags allocation_flags,
+               const uint32_t min_alignment)
+    : vma_allocator(allocator.get()) {
     SCOPED_TIMER_NAMED("Create VkBuffer");
 
     const vk::BufferCreateInfo buffer_create_info = {
@@ -18,34 +21,53 @@ Buffer::Buffer(const Allocator& allocator, const vk::DeviceSize size, const vk::
         .usage = usage,
     };
 
-    const VmaAllocationCreateInfo allocation_create_info = {
-        .flags = allocation_create_flags,
-        .usage = VMA_MEMORY_USAGE_AUTO,
-        .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+    const VmaAllocationCreateInfo alloc_create_info = {
+        .flags = allocation_flags,
+        .usage = memory_usage,
+        // .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
     };
 
     VkBuffer buffer;
-    const auto result = vmaCreateBuffer(allocator.get(),
-                                        buffer_create_info,
-                                        &allocation_create_info,
-                                        &buffer,
-                                        &vma_allocation,
-                                        nullptr);
+    VmaAllocationInfo alloc_info;
+
+    VkResult result;
+
+    if (min_alignment != 0) {
+        result = vmaCreateBufferWithAlignment(allocator.get(),
+                                              reinterpret_cast<const VkBufferCreateInfo*>(&buffer_create_info),
+                                              &alloc_create_info,
+                                              min_alignment,
+                                              &buffer,
+                                              &vma_allocation,
+                                              &alloc_info);
+    } else {
+        result = vmaCreateBuffer(allocator.get(),
+                                 reinterpret_cast<const VkBufferCreateInfo*>(&buffer_create_info),
+                                 &alloc_create_info,
+                                 &buffer,
+                                 &vma_allocation,
+                                 &alloc_info);
+    }
 
     if (result != VK_SUCCESS) {
         spdlog::error("vmaCreateBuffer failed: {}", vk::to_string(static_cast<vk::Result>(result)));
+        throw std::runtime_error("Failed to create VkBuffer");
     }
     handle = buffer;
+    mapped_data = alloc_info.pMappedData;
 }
 
 Buffer::~Buffer() {
-    vmaDestroyBuffer(vma_allocator, this->handle, vma_allocation);
+    if (handle) {
+        vmaDestroyBuffer(vma_allocator, handle, vma_allocation);
+    }
 }
 
 Buffer::Buffer(Buffer&& other) noexcept
-    : handle(other.handle),
-      vma_allocation(other.vma_allocation),
-      vma_allocator(other.vma_allocator) {
+    : handle(std::exchange(other.handle, nullptr)),
+      vma_allocation(std::exchange(other.vma_allocation, nullptr)),
+      vma_allocator(other.vma_allocator),
+      mapped_data(std::exchange(other.mapped_data, nullptr)) {
     other.handle = nullptr;
     other.vma_allocation = nullptr;
 }
@@ -62,6 +84,7 @@ Buffer& Buffer::operator=(Buffer&& other) noexcept {
     handle = std::exchange(other.handle, nullptr);
     vma_allocation = std::exchange(other.vma_allocation, nullptr);
     vma_allocator = other.vma_allocator;
+    mapped_data = std::exchange(other.mapped_data, nullptr);
 
     return *this;
 }
@@ -72,4 +95,35 @@ const vk::Buffer& Buffer::get() const {
 
 VmaAllocation Buffer::get_allocation() const {
     return vma_allocation;
+}
+
+BufferBuilder::BufferBuilder() = default;
+
+BufferBuilder& BufferBuilder::size(const vk::DeviceSize size) {
+    size_ = size;
+    return *this;
+}
+
+BufferBuilder& BufferBuilder::usage(const vk::BufferUsageFlags usage) {
+    usage_ = usage;
+    return *this;
+}
+
+BufferBuilder& BufferBuilder::memory_usage(const VmaMemoryUsage memory_usage) {
+    memory_usage_ = memory_usage;
+    return *this;
+}
+
+BufferBuilder& BufferBuilder::allocation_flags(const VmaAllocationCreateFlags allocation_flags) {
+    allocation_flags_ = allocation_flags;
+    return *this;
+}
+
+BufferBuilder& BufferBuilder::min_alignment(const uint32_t alignment) {
+    min_alignment_ = alignment;
+    return *this;
+}
+
+Buffer BufferBuilder::build(const Allocator& allocator) const {
+    return Buffer(allocator, size_, usage_, memory_usage_, allocation_flags_, min_alignment_);
 }
