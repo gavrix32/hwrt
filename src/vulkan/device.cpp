@@ -7,8 +7,7 @@
 #include "device.h"
 #include "utils.h"
 
-Device::Device(const Adapter& adapter, const std::vector<const char*>& required_extensions,
-               vk::PhysicalDeviceFeatures2 features) : vk_device(nullptr), vk_queue(nullptr), queue_family_index(0) {
+Device::Device(const Adapter& adapter, const std::vector<const char*>& required_extensions) : vk_device(nullptr), vk_queue(nullptr), queue_family_index(0) {
     SCOPED_TIMER_NAMED("Create VkDevice, VkQueue");
 
     auto queue_family_properties = adapter.get().getQueueFamilyProperties();
@@ -48,8 +47,18 @@ Device::Device(const Adapter& adapter, const std::vector<const char*>& required_
         .pQueuePriorities = &queue_priority
     };
 
+    vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceVulkan14Features,
+                       vk::PhysicalDeviceBufferDeviceAddressFeatures, vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
+                       vk::PhysicalDeviceRayTracingPipelineFeaturesKHR> features_chain;
+
+    features_chain.get<vk::PhysicalDeviceVulkan13Features>().synchronization2 = vk::True;
+    features_chain.get<vk::PhysicalDeviceVulkan14Features>().pushDescriptor = vk::True;
+    features_chain.get<vk::PhysicalDeviceBufferDeviceAddressFeatures>().bufferDeviceAddress = vk::True;
+    features_chain.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure = vk::True;
+    features_chain.get<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>().rayTracingPipeline = vk::True;
+
     vk::DeviceCreateInfo device_create_info{
-        .pNext = &features,
+        .pNext = &features_chain.get<vk::PhysicalDeviceFeatures2>(),
         .queueCreateInfoCount = 1,
         .pQueueCreateInfos = &device_queue_create_info,
         .enabledExtensionCount = static_cast<uint32_t>(required_extensions.size()),

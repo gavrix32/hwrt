@@ -8,8 +8,7 @@ class Device {
     uint32_t queue_family_index;
 
 public:
-    explicit Device(const Adapter& adapter, const std::vector<const char*>& required_extensions,
-                    vk::PhysicalDeviceFeatures2 features);
+    explicit Device(const Adapter& adapter, const std::vector<const char*>& required_extensions);
     const vk::raii::Device& get() const;
     const vk::raii::Queue& get_queue() const;
     uint32_t get_queue_family_index() const;

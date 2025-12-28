@@ -29,9 +29,8 @@ add_executable(hwrt
         src/vulkan/buffer.cpp
         src/vulkan/image.cpp
         src/vulkan/encoder.cpp
-        src/vulkan/utils.h
         src/context.cpp
-        src/context.h
+        src/frame.cpp
 )
 
 target_link_libraries(hwrt PRIVATE

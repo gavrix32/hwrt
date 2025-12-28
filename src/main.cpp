@@ -13,6 +13,7 @@
 #include <spdlog/spdlog.h>
 
 #include "context.h"
+#include "frame.h"
 #include "vulkan/adapter.h"
 #include "vulkan/device.h"
 #include "vulkan/swapchain.h"
@@ -24,7 +25,7 @@
 #define WIDTH 800
 #define HEIGHT 600
 
-// TODO: Abstractions (context, frame data, buffer and image builders, pipeline, blas, tlas, sbt, window, input)
+// TODO: Abstractions (buffer and image builders, pipeline, blas, tlas, sbt, window, input)
 
 const std::vector validation_layers = {
     "VK_LAYER_KHRONOS_validation"
@@ -628,54 +629,31 @@ void init_vulkan(GLFWwindow* window) {
         rchit_region.size = rchit_size;
     }
 
-    std::vector<vk::raii::Semaphore> image_available_semaphores;
-    std::vector<vk::raii::Semaphore> render_finished_semaphores;
-    std::vector<vk::raii::Fence> render_fences;
-
     constexpr int frames_in_flight = 2;
+    const int swapchain_image_count = ctx.get_swapchain().get_images().size();
 
     auto encoder = Encoder(ctx.get_device(), frames_in_flight);
-
-    for (size_t i = 0; i < frames_in_flight; ++i) {
-        vk::FenceCreateInfo fence_create_info{
-            .flags = vk::FenceCreateFlagBits::eSignaled
-        };
-        render_fences.emplace_back(ctx.get_device().get(), fence_create_info);
-
-        vk::SemaphoreCreateInfo semaphore_info;
-        image_available_semaphores.emplace_back(ctx.get_device().get(), semaphore_info);
-    }
-
-    for (size_t i = 0; i < ctx.get_swapchain().get_images().size(); ++i) {
-        vk::SemaphoreCreateInfo semaphore_info;
-        render_finished_semaphores.emplace_back(ctx.get_device().get(), semaphore_info);
-    }
-
-    uint32_t frame_index = 0;
+    auto frame_mgr = FrameManager(ctx.get_device(), frames_in_flight, swapchain_image_count);
 
     ctx.get_device().get_queue().waitIdle();
 
     while (!glfwWindowShouldClose(window)) {
         (void) ctx.get_device().get().
-                   waitForFences({*render_fences[frame_index]}, vk::True, std::numeric_limits<uint64_t>::max());
-        ctx.get_device().get().resetFences({*render_fences[frame_index]});
+                   waitForFences({*frame_mgr.get_in_flight_fence()}, vk::True, std::numeric_limits<uint64_t>::max());
+        ctx.get_device().get().resetFences({*frame_mgr.get_in_flight_fence()});
 
         uint32_t image_index;
-
-        auto& current_image_available_semaphore = image_available_semaphores[frame_index];
 
         vk::AcquireNextImageInfoKHR acquire_info{
             .swapchain = ctx.get_swapchain().get(),
             .timeout = std::numeric_limits<uint64_t>::max(),
-            .semaphore = current_image_available_semaphore,
+            .semaphore = frame_mgr.get_image_available_semaphore(),
             .deviceMask = 1,
         };
         image_index = ctx.get_device().get().acquireNextImage2KHR(acquire_info).value;
         auto swapchain_image = ctx.get_swapchain().get_images()[image_index];
 
-        auto& current_render_finished_semaphore = render_finished_semaphores[image_index];
-
-        encoder.begin(frame_index);
+        encoder.begin(frame_mgr.get_frame_index());
         auto& cmd = encoder.get_cmd();
 
         cmd.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, RT_pipeline);
@@ -706,21 +684,21 @@ void init_vulkan(GLFWwindow* window) {
 
         vk::SubmitInfo render_submit_info{
             .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &*current_image_available_semaphore,
+            .pWaitSemaphores = &*frame_mgr.get_image_available_semaphore(),
             .pWaitDstStageMask = &wait_stage,
 
             .commandBufferCount = 1,
             .pCommandBuffers = &*cmd,
 
             .signalSemaphoreCount = 1,
-            .pSignalSemaphores = &*current_render_finished_semaphore,
+            .pSignalSemaphores = &*frame_mgr.get_render_finished_semaphore(image_index),
         };
 
-        ctx.get_device().get_queue().submit(render_submit_info, *render_fences[frame_index]);
+        ctx.get_device().get_queue().submit(render_submit_info, *frame_mgr.get_in_flight_fence());
 
         vk::PresentInfoKHR present_info{
             .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &*current_render_finished_semaphore,
+            .pWaitSemaphores = &*frame_mgr.get_render_finished_semaphore(image_index),
             .swapchainCount = 1,
             .pSwapchains = &*ctx.get_swapchain().get(),
             .pImageIndices = &image_index,
@@ -748,7 +726,7 @@ void init_vulkan(GLFWwindow* window) {
 
         glfwPollEvents();
 
-        frame_index = (frame_index + 1) % frames_in_flight;
+        frame_mgr.update();
     }
 
     ctx.get_device().get().waitIdle();

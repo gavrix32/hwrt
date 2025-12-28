@@ -15,18 +15,7 @@ Context::Context(GLFWwindow* window, bool validation) {
         vk::KHRRayTracingPipelineExtensionName
     };
     adapter.emplace(*instance, device_extensions);
-
-    vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceVulkan14Features,
-                       vk::PhysicalDeviceBufferDeviceAddressFeatures, vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
-                       vk::PhysicalDeviceRayTracingPipelineFeaturesKHR> features_chain;
-
-    features_chain.get<vk::PhysicalDeviceVulkan13Features>().synchronization2 = vk::True;
-    features_chain.get<vk::PhysicalDeviceVulkan14Features>().pushDescriptor = vk::True;
-    features_chain.get<vk::PhysicalDeviceBufferDeviceAddressFeatures>().bufferDeviceAddress = vk::True;
-    features_chain.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure = vk::True;
-    features_chain.get<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>().rayTracingPipeline = vk::True;
-
-    device.emplace(*adapter, device_extensions, features_chain.get<vk::PhysicalDeviceFeatures2>());
+    device.emplace(*adapter, device_extensions);
     swapchain.emplace(*instance, *adapter, *device, window);
     allocator.emplace(*instance, *adapter, *device);
 }
