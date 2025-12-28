@@ -31,6 +31,8 @@ add_executable(hwrt
         src/vulkan/encoder.cpp
         src/context.cpp
         src/frame.cpp
+        src/input.cpp
+        src/window.cpp
 )
 
 target_link_libraries(hwrt PRIVATE

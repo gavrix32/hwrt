@@ -14,6 +14,8 @@
 
 #include "context.h"
 #include "frame.h"
+#include "input.h"
+#include "window.h"
 #include "vulkan/adapter.h"
 #include "vulkan/device.h"
 #include "vulkan/swapchain.h"
@@ -24,7 +26,8 @@
 #define WIDTH 800
 #define HEIGHT 600
 
-// TODO: Abstractions (buffer and image builders, pipeline, blas, tlas, sbt, window, input)
+// TODO: Abstractions (pipeline, blas, tlas, sbt, imgui)
+// TODO: Check first mouse input
 
 const std::vector validation_layers = {
     "VK_LAYER_KHRONOS_validation"
@@ -152,17 +155,17 @@ void layout_transition(const vk::raii::CommandBuffer& cmd_buffer, const vk::Imag
     cmd_buffer.pipelineBarrier2(dependency_info);
 }
 
-void init_vulkan(GLFWwindow* window) {
-    auto ctx = Context(window, validation);
+void init_vulkan() {
+    auto ctx = Context(Window::get(), validation);
 
-    auto RT_pipeline_props_chain = ctx.get_adapter().get().getProperties2<
+    auto adapter_props_chain = ctx.get_adapter().get().getProperties2<
         vk::PhysicalDeviceProperties2,
         vk::PhysicalDeviceRayTracingPipelinePropertiesKHR,
         vk::PhysicalDeviceAccelerationStructurePropertiesKHR
     >();
 
-    auto RT_pipeline_props = RT_pipeline_props_chain.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
-    auto AS_props = RT_pipeline_props_chain.get<vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
+    auto RT_pipeline_props = adapter_props_chain.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
+    auto AS_props = adapter_props_chain.get<vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
 
     auto vertex_buffer = BufferBuilder()
                          .size(sizeof(Vertex) * vertices.size())
@@ -420,13 +423,13 @@ void init_vulkan(GLFWwindow* window) {
 
     auto RT_image = Image(RT_image_create_info, ctx.get_allocator());
 
-    vk::ImageViewCreateInfo ray_trace_image_view_create_info{
+    vk::ImageViewCreateInfo RT_image_view_create_info{
         .image = RT_image.get(),
         .viewType = vk::ImageViewType::e2D,
         .format = sRGB_to_UNorm(ctx.get_swapchain().get_surface_format().format),
         .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
     };
-    auto RT_image_view = ctx.get_device().get().createImageView(ray_trace_image_view_create_info);
+    auto RT_image_view = ctx.get_device().get().createImageView(RT_image_view_create_info);
 
     layout_transition(single_time_encoder.get_cmd(),
                       RT_image.get(),
@@ -498,41 +501,41 @@ void init_vulkan(GLFWwindow* window) {
 
     // Ray Tracing Pipeline
 
-    auto ray_gen_shader_code = read_file("../src/shaders/spirv/raytrace.rgen.spv");
-    vk::ShaderModuleCreateInfo ray_gen_shader_module_create_info{
-        .codeSize = ray_gen_shader_code.size() * sizeof(char),
-        .pCode = reinterpret_cast<const uint32_t*>(ray_gen_shader_code.data()),
+    auto rgen_shader_code = read_file("../src/shaders/spirv/raytrace.rgen.spv");
+    vk::ShaderModuleCreateInfo rgen_shader_module_create_info{
+        .codeSize = rgen_shader_code.size() * sizeof(char),
+        .pCode = reinterpret_cast<const uint32_t*>(rgen_shader_code.data()),
     };
-    auto ray_gen_shader_module = ctx.get_device().get().createShaderModule(ray_gen_shader_module_create_info);
+    auto rgen_shader_module = ctx.get_device().get().createShaderModule(rgen_shader_module_create_info);
 
-    auto ray_miss_shader_code = read_file("../src/shaders/spirv/raytrace.rmiss.spv");
-    vk::ShaderModuleCreateInfo ray_miss_shader_module_create_info{
-        .codeSize = ray_miss_shader_code.size() * sizeof(char),
-        .pCode = reinterpret_cast<const uint32_t*>(ray_miss_shader_code.data()),
+    auto rmiss_shader_code = read_file("../src/shaders/spirv/raytrace.rmiss.spv");
+    vk::ShaderModuleCreateInfo rmiss_shader_module_create_info{
+        .codeSize = rmiss_shader_code.size() * sizeof(char),
+        .pCode = reinterpret_cast<const uint32_t*>(rmiss_shader_code.data()),
     };
-    auto ray_miss_shader_module = ctx.get_device().get().createShaderModule(ray_miss_shader_module_create_info);
+    auto rmiss_shader_module = ctx.get_device().get().createShaderModule(rmiss_shader_module_create_info);
 
-    auto closest_hit_shader_code = read_file("../src/shaders/spirv/raytrace.rchit.spv");
-    vk::ShaderModuleCreateInfo closest_hit_shader_module_create_info{
-        .codeSize = closest_hit_shader_code.size() * sizeof(char),
-        .pCode = reinterpret_cast<const uint32_t*>(closest_hit_shader_code.data()),
+    auto rchit_shader_code = read_file("../src/shaders/spirv/raytrace.rchit.spv");
+    vk::ShaderModuleCreateInfo rchit_shader_module_create_info{
+        .codeSize = rchit_shader_code.size() * sizeof(char),
+        .pCode = reinterpret_cast<const uint32_t*>(rchit_shader_code.data()),
     };
-    auto closest_hit_shader_module = ctx.get_device().get().createShaderModule(closest_hit_shader_module_create_info);
+    auto rchit_shader_module = ctx.get_device().get().createShaderModule(rchit_shader_module_create_info);
 
     std::vector shader_stage_create_info_list = {
         vk::PipelineShaderStageCreateInfo{
             .stage = vk::ShaderStageFlagBits::eRaygenKHR,
-            .module = ray_gen_shader_module,
+            .module = rgen_shader_module,
             .pName = "main",
         },
         vk::PipelineShaderStageCreateInfo{
             .stage = vk::ShaderStageFlagBits::eMissKHR,
-            .module = ray_miss_shader_module,
+            .module = rmiss_shader_module,
             .pName = "main",
         },
         vk::PipelineShaderStageCreateInfo{
             .stage = vk::ShaderStageFlagBits::eClosestHitKHR,
-            .module = closest_hit_shader_module,
+            .module = rchit_shader_module,
             .pName = "main",
         },
     };
@@ -637,7 +640,22 @@ void init_vulkan(GLFWwindow* window) {
 
     ctx.get_device().get_queue().waitIdle();
 
-    while (!glfwWindowShouldClose(window)) {
+    bool mouse_grab = false;
+
+    while (!Window::should_close()) {
+        Input::update();
+
+        glfwPollEvents();
+
+        if (Input::key_released(GLFW_KEY_ESCAPE)) {
+            Window::close();
+        }
+
+        if (Input::mouse_button_released(GLFW_MOUSE_BUTTON_RIGHT)) {
+            mouse_grab = !mouse_grab;
+            Input::set_cursor_grab(mouse_grab);
+        }
+
         (void) ctx.get_device().get().
                    waitForFences({*frame_mgr.get_in_flight_fence()}, vk::True, std::numeric_limits<uint64_t>::max());
         ctx.get_device().get().resetFences({*frame_mgr.get_in_flight_fence()});
@@ -724,8 +742,6 @@ void init_vulkan(GLFWwindow* window) {
             last_update_time = current_time;
         }
 
-        glfwPollEvents();
-
         frame_mgr.update();
     }
 
@@ -739,27 +755,13 @@ int main() {
     spdlog::set_level(spdlog::level::trace);
 #endif
 
-    glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
-    glfwInit();
-
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-
-    GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "HWRT", nullptr, nullptr);
-
-    if (!window) {
-        spdlog::error("Failed to create GLFW window");
-        glfwTerminate();
-        return 1;
-    }
-
+    Window::init(WIDTH, HEIGHT, "hwrt");
     {
         // Need for cleanup Vulkan RAII objects before GLFW
-        init_vulkan(window);
+        init_vulkan();
     }
 
-    glfwDestroyWindow(window);
-    glfwTerminate();
+    Window::terminate();
 
     return 0;
 }

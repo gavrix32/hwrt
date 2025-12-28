@@ -11,11 +11,9 @@ public:
 
     ~Image();
 
-    // Disable copy
+    // Move only
     Image(const Image&) = delete;
     Image& operator=(const Image&) = delete;
-
-    // Enable move
     Image(Image&& other) noexcept;
     Image& operator=(Image&& other) noexcept;
 

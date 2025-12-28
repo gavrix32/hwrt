@@ -24,7 +24,6 @@ Buffer::Buffer(const Allocator& allocator,
     const VmaAllocationCreateInfo alloc_create_info = {
         .flags = allocation_flags,
         .usage = memory_usage,
-        // .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
     };
 
     VkBuffer buffer;
