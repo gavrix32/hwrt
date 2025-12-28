@@ -39,6 +39,6 @@ const vk::raii::Fence& FrameManager::get_in_flight_fence() const {
 const vk::raii::Semaphore& FrameManager::get_image_available_semaphore() const {
     return image_available_semaphores[current_frame];
 }
-const vk::raii::Semaphore& FrameManager::get_render_finished_semaphore(const int image_index) const {
+const vk::raii::Semaphore& FrameManager::get_render_finished_semaphore(const uint32_t image_index) const {
     return render_finished_semaphores[image_index];
 }

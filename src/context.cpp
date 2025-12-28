@@ -5,37 +5,37 @@
 
 #include "context.h"
 
-Context::Context(GLFWwindow* window, bool validation) {
-    instance.emplace(validation);
+std::vector device_extensions = {
+    vk::KHRSwapchainExtensionName,
+    vk::KHRDeferredHostOperationsExtensionName,
+    vk::KHRAccelerationStructureExtensionName,
+    vk::KHRRayTracingPipelineExtensionName
+};
 
-    std::vector device_extensions = {
-        vk::KHRSwapchainExtensionName,
-        vk::KHRDeferredHostOperationsExtensionName,
-        vk::KHRAccelerationStructureExtensionName,
-        vk::KHRRayTracingPipelineExtensionName
-    };
-    adapter.emplace(*instance, device_extensions);
-    device.emplace(*adapter, device_extensions);
-    swapchain.emplace(*instance, *adapter, *device, window);
-    allocator.emplace(*instance, *adapter, *device);
+Context::Context(GLFWwindow* window, const bool validation)
+    : instance(validation),
+      adapter(instance, device_extensions),
+      device(adapter, device_extensions),
+      swapchain(instance, adapter, device, window),
+      allocator(instance, adapter, device) {
 }
 
 const Instance& Context::get_instance() const {
-    return *instance;
+    return instance;
 }
 
 const Adapter& Context::get_adapter() const {
-    return *adapter;
+    return adapter;
 }
 
 const Device& Context::get_device() const {
-    return *device;
+    return device;
 }
 
 const Swapchain& Context::get_swapchain() const {
-    return *swapchain;
+    return swapchain;
 }
 
 const Allocator& Context::get_allocator() const {
-    return *allocator;
+    return allocator;
 }

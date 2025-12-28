@@ -33,6 +33,7 @@ add_executable(hwrt
         src/frame.cpp
         src/input.cpp
         src/window.cpp
+        src/renderer.cpp
 )
 
 target_link_libraries(hwrt PRIVATE

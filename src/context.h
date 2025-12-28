@@ -7,11 +7,11 @@
 #include "vulkan/allocator.h"
 
 class Context {
-    std::optional<Instance> instance;
-    std::optional<Adapter> adapter;
-    std::optional<Device> device;
-    std::optional<Swapchain> swapchain;
-    std::optional<Allocator> allocator;
+    Instance instance;
+    Adapter adapter;
+    Device device;
+    Swapchain swapchain;
+    Allocator allocator;
 
 public:
     explicit Context(GLFWwindow* window, bool validation);

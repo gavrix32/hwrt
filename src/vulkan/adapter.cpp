@@ -19,7 +19,7 @@ std::string_view get_physical_device_type_name(const vk::PhysicalDeviceType type
     }
 }
 
-Adapter::Adapter(const Instance& instance, const std::vector<const char*>& required_extensions) : vk_physical_device(nullptr) {
+Adapter::Adapter(const Instance& instance, const std::vector<const char*>& required_extensions) : handle(nullptr) {
     SCOPED_TIMER_NAMED("Create VkPhysicalDevice");
 
     const auto physical_devices = instance.get().enumeratePhysicalDevices();
@@ -50,7 +50,7 @@ Adapter::Adapter(const Instance& instance, const std::vector<const char*>& requi
 
         if (missing_device_extension_names.empty()) {
             spdlog::info("    All required extensions supported. Using this device");
-            vk_physical_device = physical_device;
+            handle = physical_device;
             break;
         } else {
             spdlog::error("    Required device extensions missing: ");
@@ -61,11 +61,11 @@ Adapter::Adapter(const Instance& instance, const std::vector<const char*>& requi
 
         ++device_idx;
     }
-    if (vk_physical_device == nullptr) {
+    if (handle == nullptr) {
         spdlog::critical("Failed to find a physical device with support for all required extensions");
     }
 }
 
 const vk::raii::PhysicalDevice& Adapter::get() const {
-    return vk_physical_device;
+    return handle;
 }

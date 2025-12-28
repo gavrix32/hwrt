@@ -17,5 +17,5 @@ public:
     [[nodiscard]] int get_frame_index() const;
     [[nodiscard]] const vk::raii::Fence& get_in_flight_fence() const;
     [[nodiscard]] const vk::raii::Semaphore& get_image_available_semaphore() const;
-    [[nodiscard]] const vk::raii::Semaphore& get_render_finished_semaphore(int image_index) const;
+    [[nodiscard]] const vk::raii::Semaphore& get_render_finished_semaphore(uint32_t image_index) const;
 };

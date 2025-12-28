@@ -1,5 +1,8 @@
 #pragma once
 
+#define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS 1
+#include <vulkan/vulkan_raii.hpp>
+
 class Instance {
     vk::raii::Context vk_context;
     vk::raii::Instance vk_instance;
@@ -7,5 +10,5 @@ class Instance {
 
 public:
     explicit Instance(bool validation);
-    const vk::raii::Instance& get() const;
+    [[nodiscard]] const vk::raii::Instance& get() const;
 };
