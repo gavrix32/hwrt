@@ -1,6 +1,3 @@
-#define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS 1
-#include <vulkan/vulkan_raii.hpp>
-
 #include <spdlog/spdlog.h>
 
 #include "adapter.h"

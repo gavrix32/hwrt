@@ -1,8 +1,5 @@
 #include <vector>
 
-#define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS 1
-#include <vulkan/vulkan_raii.hpp>
-
 #include "vulkan/device.h"
 #include "frame.h"
 

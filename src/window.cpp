@@ -1,8 +1,8 @@
-#include "window.h"
-
-#include <GLFW/glfw3.h>
 #include <spdlog/spdlog.h>
 
+#include <GLFW/glfw3.h>
+
+#include "window.h"
 #include "input.h"
 #include "vulkan/utils.h"
 

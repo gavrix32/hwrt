@@ -19,7 +19,7 @@ public:
     [[nodiscard]] static int get_width();
     [[nodiscard]] static int get_height();
     [[nodiscard]] static float get_aspect_ratio();
-    
+
     static void poll_events();
     static void close();
 };

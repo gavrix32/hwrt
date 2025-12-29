@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 4.0)
 project(hwrt)
 
 set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 find_package(Vulkan REQUIRED)
 find_package(glfw3 REQUIRED)
@@ -19,6 +20,11 @@ add_subdirectory(external/glm)
 #    add_compile_options(/fsanitize=address)
 #endif()
 
+add_compile_definitions(
+        VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
+        GLFW_INCLUDE_VULKAN
+)
+
 add_executable(hwrt
         src/main.cpp
         src/vulkan/instance.cpp
@@ -34,6 +40,7 @@ add_executable(hwrt
         src/input.cpp
         src/window.cpp
         src/renderer.cpp
+        src/vulkan/pipeline.cpp
 )
 
 target_link_libraries(hwrt PRIVATE

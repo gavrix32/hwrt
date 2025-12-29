@@ -1,5 +1,9 @@
 #pragma once
 
+#include <vulkan/vulkan_raii.hpp>
+
+class Device;
+
 class FrameManager {
     int current_frame = 0;
     int frames_in_flight;

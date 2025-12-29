@@ -1,5 +1,7 @@
-#define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS 1
 #include <vulkan/vulkan_raii.hpp>
+
+#define VMA_IMPLEMENTATION
+#include <vk_mem_alloc.h>
 
 #include <spdlog/spdlog.h>
 

@@ -1,9 +1,12 @@
 #pragma once
 
+#include <vulkan/vulkan_raii.hpp>
+
+class GLFWwindow;
+
 class Instance;
 class Adapter;
 class Device;
-class GLFWwindow;
 
 class Swapchain {
     vk::Extent2D extent;

@@ -1,9 +1,8 @@
 #pragma once
 
-#define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS 1
 #include <vulkan/vulkan_raii.hpp>
 
-#include "instance.h"
+class Instance;
 
 class Adapter {
     vk::raii::PhysicalDevice handle;
