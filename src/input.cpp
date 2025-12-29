@@ -1,6 +1,10 @@
 #include "input.h"
 
+#include "vulkan/utils.h"
+
 void Input::init(GLFWwindow* window) {
+    SCOPED_TIMER();
+
     window_handle = window;
 
     glfwSetKeyCallback(window, key_callback);

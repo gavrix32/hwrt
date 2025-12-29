@@ -48,7 +48,7 @@ vk::PresentModeKHR choose_present_mode(const std::vector<vk::PresentModeKHR>& av
 
 Swapchain::Swapchain(const Instance& instance, const Adapter& adapter, const Device& device,
                      GLFWwindow* window) : surface_khr(nullptr), handle(nullptr) {
-    SCOPED_TIMER_NAMED("Create VkSurfaceKHR, VkSwapchainKHR");
+    SCOPED_TIMER();
 
     VkSurfaceKHR _surface;
     if (glfwCreateWindowSurface(*instance.get(), window, nullptr, &_surface) != 0) {

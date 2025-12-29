@@ -10,7 +10,7 @@
 #include "utils.h"
 
 Allocator::Allocator(const Instance& instance, const Adapter& adapter, const Device& device) {
-    SCOPED_TIMER_NAMED("Create VmaAllocator");
+    SCOPED_TIMER();
 
     const VmaAllocatorCreateInfo allocator_create_info = {
         .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,

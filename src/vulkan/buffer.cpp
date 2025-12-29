@@ -16,7 +16,7 @@ Buffer::Buffer(const Allocator& allocator,
                const VmaAllocationCreateFlags allocation_flags,
                const uint32_t min_alignment)
     : allocator(allocator.get()) {
-    SCOPED_TIMER_NAMED("Create VkBuffer");
+    SCOPED_TIMER();
 
     const vk::BufferCreateInfo buffer_create_info = {
         .size = size,

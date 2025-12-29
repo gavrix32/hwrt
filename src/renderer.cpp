@@ -5,6 +5,7 @@
 
 #include "window.h"
 #include "spdlog/spdlog.h"
+#include "vulkan/utils.h"
 
 std::vector<char> read_file(const std::string& filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
@@ -50,82 +51,19 @@ vk::Format srgb_to_unorm(const vk::Format format) {
     }
 }
 
-void Renderer::layout_transition(const vk::raii::CommandBuffer& cmd_buffer,
-                                 const vk::Image image,
-                                 const vk::ImageLayout old_layout,
-                                 const vk::ImageLayout new_layout) {
-    vk::AccessFlags2 srcAccessMask;
-    vk::AccessFlags2 dstAccessMask;
-    vk::PipelineStageFlags2 srcStageMask;
-    vk::PipelineStageFlags2 dstStageMask;
-
-    if (old_layout == vk::ImageLayout::eUndefined && new_layout == vk::ImageLayout::eTransferDstOptimal) {
-        srcAccessMask = vk::AccessFlagBits2::eNone;
-        dstAccessMask = vk::AccessFlagBits2::eTransferWrite;
-        srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe;
-        dstStageMask = vk::PipelineStageFlagBits2::eTransfer;
-    } else if (old_layout == vk::ImageLayout::eUndefined && new_layout == vk::ImageLayout::eTransferSrcOptimal) {
-        srcAccessMask = vk::AccessFlagBits2::eNone;
-        dstAccessMask = vk::AccessFlagBits2::eTransferRead;
-        srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe;
-        dstStageMask = vk::PipelineStageFlagBits2::eTransfer;
-    } else if (old_layout == vk::ImageLayout::eTransferDstOptimal && new_layout == vk::ImageLayout::eShaderReadOnlyOptimal) {
-        srcAccessMask = vk::AccessFlagBits2::eTransferWrite;
-        dstAccessMask = vk::AccessFlagBits2::eShaderRead;
-        srcStageMask = vk::PipelineStageFlagBits2::eTransfer;
-        dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader;
-    } else if (old_layout == vk::ImageLayout::eUndefined && new_layout == vk::ImageLayout::eGeneral) {
-        srcAccessMask = vk::AccessFlagBits2::eNone;
-        dstAccessMask = vk::AccessFlagBits2::eShaderWrite;
-        srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe;
-        dstStageMask = vk::PipelineStageFlagBits2::eRayTracingShaderKHR;
-    } else if (old_layout == vk::ImageLayout::eGeneral && new_layout == vk::ImageLayout::eTransferSrcOptimal) {
-        srcAccessMask = vk::AccessFlagBits2::eShaderWrite;
-        dstAccessMask = vk::AccessFlagBits2::eTransferRead;
-        srcStageMask = vk::PipelineStageFlagBits2::eRayTracingShaderKHR;
-        dstStageMask = vk::PipelineStageFlagBits2::eTransfer;
-    } else if (old_layout == vk::ImageLayout::eTransferDstOptimal && new_layout == vk::ImageLayout::ePresentSrcKHR) {
-        srcAccessMask = vk::AccessFlagBits2::eTransferWrite;
-        dstAccessMask = vk::AccessFlagBits2::eNone;
-        srcStageMask = vk::PipelineStageFlagBits2::eTransfer;
-        dstStageMask = vk::PipelineStageFlagBits2::eBottomOfPipe;
-    } else if (old_layout == vk::ImageLayout::eTransferSrcOptimal && new_layout == vk::ImageLayout::eGeneral) {
-        srcAccessMask = vk::AccessFlagBits2::eTransferRead;
-        dstAccessMask = vk::AccessFlagBits2::eShaderWrite;
-        srcStageMask = vk::PipelineStageFlagBits2::eTransfer;
-        dstStageMask = vk::PipelineStageFlagBits2::eRayTracingShaderKHR;
-    } else {
-        spdlog::error("Unsupported layout transition");
-    }
-
-    vk::ImageMemoryBarrier2 barrier{
-        .srcStageMask = srcStageMask,
-        .srcAccessMask = srcAccessMask,
-        .dstStageMask = dstStageMask,
-        .dstAccessMask = dstAccessMask,
-        .oldLayout = old_layout,
-        .newLayout = new_layout,
-        .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
-        .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
-        .image = image,
-        .subresourceRange = {
-            .aspectMask = vk::ImageAspectFlagBits::eColor,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        }
-    };
-
-    const vk::DependencyInfo dependency_info{
-        .imageMemoryBarrierCount = 1,
-        .pImageMemoryBarriers = &barrier
-    };
-    cmd_buffer.pipelineBarrier2(dependency_info);
-}
-
 Renderer::Renderer(const bool validation) {
+    SCOPED_TIMER();
+
     ctx = std::make_unique<Context>(Window::get(), validation);
+
+    auto swapchain_image_handles = ctx->get_swapchain().get_images();
+
+    std::vector<Image> swapchain_images;
+    swapchain_images.reserve(swapchain_image_handles.size());
+
+    for (auto handle : swapchain_image_handles) {
+        swapchain_images.emplace_back(handle);
+    }
 
     auto adapter_props_chain = ctx->get_adapter().get().getProperties2<
         vk::PhysicalDeviceProperties2,
@@ -384,10 +322,10 @@ Renderer::Renderer(const bool validation) {
     };
     auto rt_image_view = ctx->get_device().get().createImageView(rt_image_view_create_info);
 
-    layout_transition(single_time_encoder.get_cmd(),
-                      rt_image.get(),
-                      vk::ImageLayout::eUndefined,
-                      vk::ImageLayout::eGeneral);
+    rt_image.transition_layout(single_time_encoder.get_cmd(),
+                               vk::ImageLayout::eGeneral,
+                               vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
+                               vk::AccessFlagBits2::eShaderWrite);
 
     single_time_encoder.submit(ctx->get_device().get_queue());
 
@@ -578,10 +516,11 @@ Renderer::Renderer(const bool validation) {
         .rt_pipeline = std::move(rt_pipeline),
         .rt_image = std::move(rt_image),
         .rt_image_view = std::move(rt_image_view),
+        .swapchain_images = std::move(swapchain_images),
     });
 }
 
-void Renderer::draw_frame() {
+void Renderer::draw_frame() const {
     (void) ctx->get_device().get().
                 waitForFences({frame_mgr->get_in_flight_fence()},
                               vk::True,
@@ -597,7 +536,6 @@ void Renderer::draw_frame() {
         .deviceMask = 1,
     };
     image_index = ctx->get_device().get().acquireNextImage2KHR(acquire_info).value;
-    auto swapchain_image = ctx->get_swapchain().get_images()[image_index];
 
     encoder->begin(frame_mgr->get_frame_index());
     auto& cmd = encoder->get_cmd();
@@ -639,11 +577,15 @@ void Renderer::draw_frame() {
                      Window::get_height(),
                      1);
 
-    layout_transition(cmd,
-                      res->rt_image.get(),
-                      vk::ImageLayout::eGeneral,
-                      vk::ImageLayout::eTransferSrcOptimal);
-    layout_transition(cmd, swapchain_image, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
+    res->rt_image.transition_layout(cmd,
+                                    vk::ImageLayout::eTransferSrcOptimal,
+                                    vk::PipelineStageFlagBits2::eTransfer,
+                                    vk::AccessFlagBits2::eTransferRead);
+
+    res->swapchain_images[image_index].transition_layout(cmd,
+                                                         vk::ImageLayout::eTransferDstOptimal,
+                                                         vk::PipelineStageFlagBits2::eTransfer,
+                                                         vk::AccessFlagBits2::eTransferWrite);
 
     vk::ImageCopy copy_region{
         .srcSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
@@ -654,16 +596,23 @@ void Renderer::draw_frame() {
 
     cmd.copyImage(res->rt_image.get(),
                   vk::ImageLayout::eTransferSrcOptimal,
-                  swapchain_image,
+                  res->swapchain_images[image_index].get(),
                   vk::ImageLayout::eTransferDstOptimal,
                   copy_region);
 
-    layout_transition(cmd, swapchain_image, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::ePresentSrcKHR);
-    layout_transition(cmd, res->rt_image.get(), vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eGeneral);
+    res->swapchain_images[image_index].transition_layout(cmd,
+                                                         vk::ImageLayout::ePresentSrcKHR,
+                                                         vk::PipelineStageFlagBits2::eBottomOfPipe,
+                                                         vk::AccessFlagBits2::eNone);
+
+    res->rt_image.transition_layout(cmd,
+                                    vk::ImageLayout::eGeneral,
+                                    vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
+                                    vk::AccessFlagBits2::eShaderWrite);
 
     encoder->end();
 
-    vk::PipelineStageFlags wait_stage = vk::PipelineStageFlagBits::eRayTracingShaderKHR;
+    vk::PipelineStageFlags wait_stage = vk::PipelineStageFlagBits::eTopOfPipe;
 
     vk::SubmitInfo submit_info{
         .waitSemaphoreCount = 1,

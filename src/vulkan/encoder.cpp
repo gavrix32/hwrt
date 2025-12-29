@@ -6,7 +6,7 @@
 #include "utils.h"
 
 Encoder::Encoder(const Device& device, uint32_t max_command_buffers) : command_pool(nullptr) {
-    SCOPED_TIMER_NAMED(fmt::format("Create VkCommandPool, VkCommandBuffer ({})", max_command_buffers));
+    SCOPED_TIMER_NAMED("cmd buffers: {}", max_command_buffers);
 
     const vk::CommandPoolCreateInfo command_pool_create_info{
         .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
@@ -36,7 +36,7 @@ const vk::raii::CommandBuffer& Encoder::get_cmd() const {
 }
 
 SingleTimeEncoder::SingleTimeEncoder(const Device& device) : command_pool(nullptr), command_buffer(nullptr) {
-    SCOPED_TIMER_NAMED("Create VkCommandPool, VkCommandBuffer");
+    SCOPED_TIMER();
 
     const vk::CommandPoolCreateInfo command_pool_create_info{
         .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,

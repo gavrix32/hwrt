@@ -28,6 +28,8 @@ struct Resources {
 
     Image rt_image;
     vk::raii::ImageView rt_image_view;
+
+    std::vector<Image> swapchain_images;
 };
 
 class Renderer {
@@ -39,13 +41,10 @@ class Renderer {
 public:
     explicit Renderer(bool validation);
 
-    void draw_frame();
+    void draw_frame() const;
 
     [[nodiscard]] Context& get_ctx() const;
     [[nodiscard]] Resources& get_res() const;
     [[nodiscard]] Encoder& get_encoder() const;
     [[nodiscard]] FrameManager& get_frame_mgr() const;
-
-    static void layout_transition(const vk::raii::CommandBuffer& cmd_buffer, vk::Image image, vk::ImageLayout old_layout,
-                                  vk::ImageLayout new_layout);
 };

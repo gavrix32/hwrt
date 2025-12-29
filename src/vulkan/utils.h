@@ -5,8 +5,8 @@
 
 #include <spdlog/spdlog.h>
 
-#define SCOPED_TIMER() ScopedTimer timer(__func__)
-#define SCOPED_TIMER_NAMED(name) ScopedTimer timer(name)
+#define SCOPED_TIMER() ScopedTimer timer(__PRETTY_FUNCTION__)
+#define SCOPED_TIMER_NAMED(...) ScopedTimer timer(fmt::format("{}: {}", __PRETTY_FUNCTION__, fmt::format(__VA_ARGS__)))
 
 class ScopedTimer {
 public:
@@ -17,10 +17,9 @@ public:
 
     ~ScopedTimer() {
         const auto end_time = std::chrono::high_resolution_clock::now();
-        const auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
-        double ms = duration / 1000.0;
+        const std::chrono::duration<double, std::milli> ms = end_time - start_time;
 
-        spdlog::trace("{} ({:.3f} ms)", name, ms);
+        spdlog::trace("{} ({:.1f} ms)", name, ms.count());
     }
 
 private:

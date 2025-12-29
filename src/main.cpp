@@ -39,7 +39,7 @@ int main() {
 
     Window::init(WIDTH, HEIGHT, "hwrt");
     {
-        Renderer renderer(validation);
+        const Renderer renderer(validation);
 
         bool mouse_grab = false;
         while (!Window::should_close()) {

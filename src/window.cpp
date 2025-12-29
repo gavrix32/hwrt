@@ -4,8 +4,11 @@
 #include <spdlog/spdlog.h>
 
 #include "input.h"
+#include "vulkan/utils.h"
 
 void Window::init(int width, int height, const std::string& title, const bool resizable) {
+    SCOPED_TIMER_NAMED("\"{}\" ({}x{})", title, width, height);
+
     width_ = width;
     height_ = height;
 
@@ -28,7 +31,6 @@ void Window::init(int width, int height, const std::string& title, const bool re
     }
 
     Input::init(handle);
-    spdlog::info("GLFW window initialized: {} ({}x{})", title, width, height);
 }
 
 void Window::terminate() {
