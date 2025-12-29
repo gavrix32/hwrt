@@ -10,9 +10,11 @@ void Input::init(GLFWwindow* window) {
 
 void Input::update() {
     mouse_delta = {0.0f, 0.0f};
-    
+
     std::copy(keys_current.begin(), keys_current.end(), keys_last.begin());
     std::copy(mouse_current.begin(), mouse_current.end(), mouse_last.begin());
+
+    glfwPollEvents();
 }
 
 bool Input::key_down(const int key) {
@@ -78,7 +80,7 @@ void Input::cursor_position_callback(GLFWwindow* window, double xpos, double ypo
     }
 
     const glm::vec2 new_pos = {static_cast<float>(xpos), static_cast<float>(ypos)};
-    
+
     mouse_delta.x = new_pos.x - mouse_pos.x;
     mouse_delta.y = new_pos.y - mouse_pos.y;
 
