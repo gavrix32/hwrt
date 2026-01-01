@@ -5,23 +5,8 @@
 
 #include "window.h"
 #include "spdlog/spdlog.h"
+#include "vulkan/pipeline.h"
 #include "vulkan/utils.h"
-
-std::vector<char> read_file(const std::string& filename) {
-    std::ifstream file(filename, std::ios::ate | std::ios::binary);
-
-    if (!file.is_open()) {
-        spdlog::error("Failed to open file: {}", filename);
-    }
-
-    std::vector<char> buffer(file.tellg());
-
-    file.seekg(0, std::ios::beg);
-    file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
-    file.close();
-
-    return buffer;
-}
 
 struct Vertex {
     float pos[3];
@@ -357,91 +342,31 @@ Renderer::Renderer(const bool validation) {
 
     auto descriptor_set_layout = ctx->get_device().get().createDescriptorSetLayout(descriptor_set_layout_create_info);
 
-    vk::PipelineLayoutCreateInfo pipeline_layout_create_info{
-        .setLayoutCount = 1,
-        .pSetLayouts = &*descriptor_set_layout,
-    };
-
-    auto rt_pipeline_layout = ctx->get_device().get().createPipelineLayout(pipeline_layout_create_info);
-
     // Ray Tracing Pipeline
 
-    auto rgen_shader_code = read_file("../src/shaders/spirv/raytrace.rgen.spv");
-    vk::ShaderModuleCreateInfo rgen_shader_module_create_info{
-        .codeSize = rgen_shader_code.size() * sizeof(char),
-        .pCode = reinterpret_cast<const uint32_t*>(rgen_shader_code.data()),
-    };
-    auto rgen_shader_module = ctx->get_device().get().createShaderModule(rgen_shader_module_create_info);
-
-    auto rmiss_shader_code = read_file("../src/shaders/spirv/raytrace.rmiss.spv");
-    vk::ShaderModuleCreateInfo rmiss_shader_module_create_info{
-        .codeSize = rmiss_shader_code.size() * sizeof(char),
-        .pCode = reinterpret_cast<const uint32_t*>(rmiss_shader_code.data()),
-    };
-    auto rmiss_shader_module = ctx->get_device().get().createShaderModule(rmiss_shader_module_create_info);
-
-    auto rchit_shader_code = read_file("../src/shaders/spirv/raytrace.rchit.spv");
-    vk::ShaderModuleCreateInfo rchit_shader_module_create_info{
-        .codeSize = rchit_shader_code.size() * sizeof(char),
-        .pCode = reinterpret_cast<const uint32_t*>(rchit_shader_code.data()),
-    };
-    auto rchit_shader_module = ctx->get_device().get().createShaderModule(rchit_shader_module_create_info);
-
-    std::vector shader_stage_create_info_list = {
-        vk::PipelineShaderStageCreateInfo{
-            .stage = vk::ShaderStageFlagBits::eRaygenKHR,
-            .module = rgen_shader_module,
-            .pName = "main",
-        },
-        vk::PipelineShaderStageCreateInfo{
-            .stage = vk::ShaderStageFlagBits::eMissKHR,
-            .module = rmiss_shader_module,
-            .pName = "main",
-        },
-        vk::PipelineShaderStageCreateInfo{
-            .stage = vk::ShaderStageFlagBits::eClosestHitKHR,
-            .module = rchit_shader_module,
-            .pName = "main",
-        },
-    };
-
-    std::vector rt_shader_groups = {
-        vk::RayTracingShaderGroupCreateInfoKHR{
-            .type = vk::RayTracingShaderGroupTypeKHR::eGeneral,
-            .generalShader = 0,
-        },
-        vk::RayTracingShaderGroupCreateInfoKHR{
-            .type = vk::RayTracingShaderGroupTypeKHR::eGeneral,
-            .generalShader = 1,
-        },
-        vk::RayTracingShaderGroupCreateInfoKHR{
-            .type = vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup,
-            .closestHitShader = 2,
-        },
-    };
-
-    vk::RayTracingPipelineCreateInfoKHR rt_pipeline_create_info{
-        .stageCount = static_cast<uint32_t>(shader_stage_create_info_list.size()),
-        .pStages = shader_stage_create_info_list.data(),
-        .groupCount = static_cast<uint32_t>(rt_shader_groups.size()),
-        .pGroups = rt_shader_groups.data(),
-        .maxPipelineRayRecursionDepth = 1,
-        .layout = *rt_pipeline_layout,
-    };
-    auto rt_pipeline = ctx->get_device().get().createRayTracingPipelineKHR(nullptr, nullptr, rt_pipeline_create_info);
+    auto rt_pipeline = PipelineBuilder()
+                       .rgen("../src/shaders/spirv/raytrace.rgen.spv")
+                       .rmiss("../src/shaders/spirv/raytrace.rmiss.spv")
+                       .rchit("../src/shaders/spirv/raytrace.rchit.spv")
+                       .ray_depth(1)
+                       .descriptor_set_layout(descriptor_set_layout)
+                       .build(ctx->get_device());
 
     // Shader Binding Table
 
     uint32_t handle_size = rt_pipeline_props.shaderGroupHandleSize;
     uint32_t handle_alignment = rt_pipeline_props.shaderGroupHandleAlignment;
     uint32_t base_alignment = rt_pipeline_props.shaderGroupBaseAlignment;
-    uint32_t handle_count = rt_pipeline_create_info.groupCount;
+    uint32_t handle_count = rt_pipeline.get_group_count();
 
     // TODO: to function
     //////////////////////////////////////////////////
     size_t data_size = handle_size * handle_count;
 
-    std::vector<uint8_t> shader_handles = rt_pipeline.getRayTracingShaderGroupHandlesKHR<uint8_t>(0, handle_count, data_size);
+    std::vector<uint8_t> shader_handles = rt_pipeline.get().getRayTracingShaderGroupHandlesKHR<uint8_t>(
+        0,
+        handle_count,
+        data_size);
 
     auto align_up = [](uint32_t size, uint32_t alignment) {
         return (size + alignment - 1) & ~(alignment - 1);
@@ -512,7 +437,6 @@ Renderer::Renderer(const bool validation) {
         .rmiss_region = rmiss_region,
         .rchit_region = rchit_region,
         .descriptor_set_layout = std::move(descriptor_set_layout),
-        .rt_pipeline_layout = std::move(rt_pipeline_layout),
         .rt_pipeline = std::move(rt_pipeline),
         .rt_image = std::move(rt_image),
         .rt_image_view = std::move(rt_image_view),
@@ -566,8 +490,8 @@ void Renderer::draw_frame() const {
 
     std::vector writes{write_as, write_image};
 
-    cmd.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, res->rt_pipeline);
-    cmd.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, res->rt_pipeline_layout, 0, writes);
+    cmd.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, res->rt_pipeline.get());
+    cmd.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, res->rt_pipeline.get_layout(), 0, writes);
 
     cmd.traceRaysKHR(res->rgen_region,
                      res->rmiss_region,

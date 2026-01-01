@@ -62,11 +62,9 @@ Buffer::~Buffer() {
 
 Buffer::Buffer(Buffer&& other) noexcept
     : handle(std::exchange(other.handle, nullptr)),
-      allocation(std::exchange(other.allocation, nullptr)),
       allocator(other.allocator),
+      allocation(std::exchange(other.allocation, nullptr)),
       mapped_data(std::exchange(other.mapped_data, nullptr)) {
-    other.handle = nullptr;
-    other.allocation = nullptr;
 }
 
 Buffer& Buffer::operator=(Buffer&& other) noexcept {

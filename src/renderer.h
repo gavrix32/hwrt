@@ -5,6 +5,7 @@
 #include "vulkan/encoder.h"
 #include "context.h"
 #include "frame.h"
+#include "vulkan/pipeline.h"
 
 struct Resources {
     Buffer vertex_buffer;
@@ -23,8 +24,7 @@ struct Resources {
     vk::StridedDeviceAddressRegionKHR rchit_region{};
 
     vk::raii::DescriptorSetLayout descriptor_set_layout;
-    vk::raii::PipelineLayout rt_pipeline_layout;
-    vk::raii::Pipeline rt_pipeline;
+    Pipeline rt_pipeline;
 
     Image rt_image;
     vk::raii::ImageView rt_image_view;

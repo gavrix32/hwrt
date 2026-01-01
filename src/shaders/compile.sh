@@ -1,3 +1,25 @@
-slangc slang/raytrace.rgen.slang -target spirv -profile spirv_1_4 -matrix-layout-column-major -o spirv/raytrace.rgen.spv
-slangc slang/raytrace.rmiss.slang -target spirv -profile spirv_1_4 -matrix-layout-column-major -o spirv/raytrace.rmiss.spv
-slangc slang/raytrace.rchit.slang -target spirv -profile spirv_1_4 -matrix-layout-column-major -o spirv/raytrace.rchit.spv
+#!/bin/bash
+
+SHADER_DIR="$(cd "$(dirname "$0")" && pwd)/slang"
+OUTPUT_DIR="$SHADER_DIR/../spirv"
+
+mkdir -p "$OUTPUT_DIR"
+
+echo "Compiling shaders..."
+
+for SHADER in raytrace.rgen raytrace.rmiss raytrace.rchit; do
+    SRC="$SHADER_DIR/$SHADER.slang"
+    DST="$OUTPUT_DIR/$SHADER.spv"
+
+    if [[ ! -f "$DST" || "$SRC" -nt "$DST" ]]; then
+        echo "- $SHADER"
+        slangc -I "$SHADER_DIR" "$SRC" -target spirv -profile spirv_1_4 -matrix-layout-column-major -o "$DST"
+
+        if [[ $? -ne 0 ]]; then
+            echo "Failed to compile $SHADER"
+            exit 1
+        fi
+    fi
+done
+
+echo "Done"
