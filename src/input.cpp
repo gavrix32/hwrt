@@ -15,8 +15,8 @@ void Input::init(GLFWwindow* window) {
 void Input::update() {
     mouse_delta = {0.0f, 0.0f};
 
-    std::copy(keys_current.begin(), keys_current.end(), keys_last.begin());
-    std::copy(mouse_current.begin(), mouse_current.end(), mouse_last.begin());
+    std::ranges::copy(keys_current, keys_last.begin());
+    std::ranges::copy(mouse_current, mouse_last.begin());
 
     glfwPollEvents();
 }
@@ -55,12 +55,9 @@ glm::vec2 Input::get_mouse_pos() {
 
 void Input::set_cursor_grab(const bool grab) {
     glfwSetInputMode(window_handle, GLFW_CURSOR, grab ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
-    if (grab) {
-        first_mouse_input = true;
-    }
 }
 
-void Input::key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+void Input::key_callback(GLFWwindow* window, const int key, int /*scancode*/, const int action, int /*mods*/) {
     if (action == GLFW_PRESS) {
         keys_current[key] = true;
     } else if (action == GLFW_RELEASE) {
@@ -68,7 +65,7 @@ void Input::key_callback(GLFWwindow* window, int key, int scancode, int action, 
     }
 }
 
-void Input::mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
+void Input::mouse_button_callback(GLFWwindow* /*window*/, const int button, const int action, int /*mods*/) {
     if (action == GLFW_PRESS) {
         mouse_current[button] = true;
     } else if (action == GLFW_RELEASE) {
@@ -76,17 +73,12 @@ void Input::mouse_button_callback(GLFWwindow* window, int button, int action, in
     }
 }
 
-void Input::cursor_position_callback(GLFWwindow* window, double xpos, double ypos) {
-    if (first_mouse_input) {
-        mouse_pos.x = static_cast<float>(xpos);
-        mouse_pos.y = static_cast<float>(ypos);
-        first_mouse_input = false;
-    }
+void Input::cursor_position_callback(GLFWwindow* /*window*/, const double xpos, const double ypos) {
+    const glm::vec2 new_pos = {
+        static_cast<float>(xpos),
+        static_cast<float>(ypos),
+    };
 
-    const glm::vec2 new_pos = {static_cast<float>(xpos), static_cast<float>(ypos)};
-
-    mouse_delta.x = new_pos.x - mouse_pos.x;
-    mouse_delta.y = new_pos.y - mouse_pos.y;
-
+    mouse_delta += new_pos - mouse_pos;
     mouse_pos = new_pos;
 }

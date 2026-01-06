@@ -16,7 +16,6 @@ class Input {
 
     inline static glm::vec2 mouse_pos;
     inline static glm::vec2 mouse_delta;
-    inline static bool first_mouse_input;
 
     static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
     static void mouse_button_callback(GLFWwindow* window, int button, int action, int mods);

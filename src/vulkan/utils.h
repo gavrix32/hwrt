@@ -9,6 +9,9 @@
 #define SCOPED_TIMER_NAMED(...) ScopedTimer timer(fmt::format("{}: {}", __PRETTY_FUNCTION__, fmt::format(__VA_ARGS__)))
 
 class ScopedTimer {
+    std::string name;
+    std::chrono::time_point<std::chrono::high_resolution_clock> start_time;
+
 public:
     explicit ScopedTimer(const std::string& name) {
         this->name = name;
@@ -21,8 +24,4 @@ public:
 
         spdlog::trace("{} ({:.1f} ms)", name, ms.count());
     }
-
-private:
-    std::string name;
-    std::chrono::time_point<std::chrono::high_resolution_clock> start_time;
 };

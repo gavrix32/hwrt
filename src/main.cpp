@@ -3,14 +3,14 @@
 #include "context.h"
 #include "input.h"
 #include "renderer.h"
+#include "timer.h"
 #include "window.h"
 #include "vulkan/device.h"
 
 #define WIDTH 800
 #define HEIGHT 600
 
-// TODO: Abstractions (pipeline, blas, tlas, sbt, imgui)
-// TODO: Check first mouse input
+// TODO: Abstractions (blas, tlas, sbt, image builder, imgui)
 
 #ifdef NDEBUG
 constexpr bool validation = false;
@@ -26,11 +26,21 @@ int main() {
 #endif
 
     Window::init(WIDTH, HEIGHT, "hwrt");
+
+    auto camera = Camera();
+    camera.set_pos(glm::vec3(0.0f, 0.0f, 1.0f));
+
     {
+        auto timer = Timer();
+        float delta = 0.0f;
+        float accumulator = 0.0f;
+
         const Renderer renderer(validation);
 
         bool mouse_grab = false;
         while (!Window::should_close()) {
+            timer.tick();
+
             Input::update();
 
             if (Input::key_released(GLFW_KEY_ESCAPE)) {
@@ -42,22 +52,29 @@ int main() {
                 Input::set_cursor_grab(mouse_grab);
             }
 
-            renderer.draw_frame();
+            if (mouse_grab) {
+                constexpr float sensitivity = 0.01f;
+                const float speed = 3.0f * delta;
 
-            static auto last_update_time = std::chrono::high_resolution_clock::now();
-            static int frame_count = 0;
+                const auto mouse_delta = Input::get_mouse_delta() * sensitivity;
+                camera.set_rot(camera.get_rot() + glm::vec2(mouse_delta.y, -mouse_delta.x));
 
-            frame_count++;
-
-            auto current_time = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double> elapsed_time = current_time - last_update_time;
-
-            if (elapsed_time.count() >= 1.0) {
-                double fps = static_cast<double>(frame_count) / elapsed_time.count();
-                spdlog::info("{:.0f} fps ({:.2f} ms)", fps, 1000.0 / fps);
-                frame_count = 0;
-                last_update_time = current_time;
+                if (Input::key_down(GLFW_KEY_W)) camera.move_z(-speed);
+                if (Input::key_down(GLFW_KEY_A)) camera.move_x(-speed);
+                if (Input::key_down(GLFW_KEY_S)) camera.move_z(speed);
+                if (Input::key_down(GLFW_KEY_D)) camera.move_x(speed);
+                if (Input::key_down(GLFW_KEY_SPACE)) camera.move_y(speed);
+                if (Input::key_down(GLFW_KEY_LEFT_SHIFT)) camera.move_y(-speed);
             }
+
+            renderer.draw_frame(camera);
+
+            if (accumulator >= 1.0) {
+                spdlog::info("{:.0f} fps ({:.2f} ms)", 1.0f / delta, delta * 1000.0f);
+                accumulator = 0.0f;
+            }
+            delta = timer.get_delta();
+            accumulator += delta;
         }
         renderer.get_ctx().get_device().get().waitIdle();
     }

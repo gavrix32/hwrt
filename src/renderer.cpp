@@ -3,6 +3,7 @@
 #include <iostream>
 #include <fstream>
 
+#include "camera.h"
 #include "window.h"
 #include "spdlog/spdlog.h"
 #include "vulkan/pipeline.h"
@@ -334,6 +335,14 @@ Renderer::Renderer(const bool validation) {
     };
     bindings.push_back(image_binding);
 
+    vk::DescriptorSetLayoutBinding uniform_binding{
+        .binding = 2,
+        .descriptorType = vk::DescriptorType::eUniformBuffer,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eAll,
+    };
+    bindings.push_back(uniform_binding);
+
     vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_create_info{
         .flags = vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptor,
         .bindingCount = static_cast<uint32_t>(bindings.size()),
@@ -421,7 +430,7 @@ Renderer::Renderer(const bool validation) {
     const uint32_t swapchain_image_count = ctx->get_swapchain().get_images().size();
 
     encoder = std::make_unique<Encoder>(ctx->get_device(), frames_in_flight);
-    frame_mgr = std::make_unique<FrameManager>(ctx->get_device(), frames_in_flight, swapchain_image_count);
+    frame_mgr = std::make_unique<FrameManager>(*ctx, frames_in_flight, swapchain_image_count);
 
     ctx->get_device().get_queue().waitIdle();
 
@@ -444,7 +453,7 @@ Renderer::Renderer(const bool validation) {
     });
 }
 
-void Renderer::draw_frame() const {
+void Renderer::draw_frame(const Camera& camera) const {
     (void) ctx->get_device().get().
                 waitForFences({frame_mgr->get_in_flight_fence()},
                               vk::True,
@@ -488,7 +497,27 @@ void Renderer::draw_frame() const {
         .pImageInfo = &descriptor_image_info,
     };
 
-    std::vector writes{write_as, write_image};
+    auto uniform = Uniform{
+        .inv_view = glm::inverse(camera.get_view()),
+        .inv_proj = glm::inverse(camera.get_proj()),
+    };
+    auto& uniform_buffer = frame_mgr->get_uniform_buffer();
+    memcpy(uniform_buffer.mapped_ptr(), &uniform, sizeof(Uniform));
+
+    vk::DescriptorBufferInfo descriptor_uniform_info{
+        .buffer = uniform_buffer.get(),
+        .offset = 0,
+        .range = sizeof(Uniform),
+    };
+
+    vk::WriteDescriptorSet write_uniform{
+        .dstBinding = 2,
+        .descriptorCount = 1,
+        .descriptorType = vk::DescriptorType::eUniformBuffer,
+        .pBufferInfo = &descriptor_uniform_info,
+    };
+
+    std::vector writes{write_as, write_image, write_uniform};
 
     cmd.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, res->rt_pipeline.get());
     cmd.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, res->rt_pipeline.get_layout(), 0, writes);
@@ -564,7 +593,6 @@ void Renderer::draw_frame() const {
 
     frame_mgr->update();
 }
-
 
 Context& Renderer::get_ctx() const {
     return *ctx;

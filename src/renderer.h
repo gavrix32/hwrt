@@ -3,9 +3,10 @@
 #include "vulkan/buffer.h"
 #include "vulkan/image.h"
 #include "vulkan/encoder.h"
+#include "vulkan/pipeline.h"
 #include "context.h"
 #include "frame.h"
-#include "vulkan/pipeline.h"
+#include "camera.h"
 
 struct Resources {
     Buffer vertex_buffer;
@@ -41,7 +42,7 @@ class Renderer {
 public:
     explicit Renderer(bool validation);
 
-    void draw_frame() const;
+    void draw_frame(const Camera& camera) const;
 
     [[nodiscard]] Context& get_ctx() const;
     [[nodiscard]] Resources& get_res() const;

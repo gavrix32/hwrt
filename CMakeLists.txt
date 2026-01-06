@@ -35,12 +35,13 @@ add_executable(hwrt
         src/vulkan/buffer.cpp
         src/vulkan/image.cpp
         src/vulkan/encoder.cpp
+        src/vulkan/pipeline.cpp
         src/context.cpp
         src/frame.cpp
         src/input.cpp
         src/window.cpp
         src/renderer.cpp
-        src/vulkan/pipeline.cpp
+        src/camera.cpp
 )
 
 target_link_libraries(hwrt PRIVATE
