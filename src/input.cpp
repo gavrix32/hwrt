@@ -10,6 +10,7 @@ void Input::init(GLFWwindow* window) {
     glfwSetKeyCallback(window, key_callback);
     glfwSetMouseButtonCallback(window, mouse_button_callback);
     glfwSetCursorPosCallback(window, cursor_position_callback);
+    glfwSetScrollCallback(window, scroll_callback);
 }
 
 void Input::update() {
@@ -53,11 +54,15 @@ glm::vec2 Input::get_mouse_pos() {
     return mouse_pos;
 }
 
+double Input::get_mouse_scroll() {
+    return scroll;
+}
+
 void Input::set_cursor_grab(const bool grab) {
     glfwSetInputMode(window_handle, GLFW_CURSOR, grab ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
 }
 
-void Input::key_callback(GLFWwindow* window, const int key, int /*scancode*/, const int action, int /*mods*/) {
+void Input::key_callback(GLFWwindow* /*window*/, const int key, int /*scancode*/, const int action, int /*mods*/) {
     if (action == GLFW_PRESS) {
         keys_current[key] = true;
     } else if (action == GLFW_RELEASE) {
@@ -81,4 +86,8 @@ void Input::cursor_position_callback(GLFWwindow* /*window*/, const double xpos, 
 
     mouse_delta += new_pos - mouse_pos;
     mouse_pos = new_pos;
+}
+
+void Input::scroll_callback(GLFWwindow* /*window*/, double /*xoffset*/, const double yoffset) {
+    scroll = yoffset;
 }

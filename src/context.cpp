@@ -1,7 +1,5 @@
 #include <vulkan/vulkan_raii.hpp>
 
-#include <GLFW/glfw3.h>
-
 #include "context.h"
 
 std::vector device_extensions = {
@@ -11,11 +9,10 @@ std::vector device_extensions = {
     vk::KHRRayTracingPipelineExtensionName
 };
 
-Context::Context(GLFWwindow* window, const bool validation)
+Context::Context(const bool validation)
     : instance(validation),
       adapter(instance, device_extensions),
       device(adapter, device_extensions),
-      swapchain(instance, adapter, device, window),
       allocator(instance, adapter, device) {
 }
 
@@ -29,10 +26,6 @@ const Adapter& Context::get_adapter() const {
 
 const Device& Context::get_device() const {
     return device;
-}
-
-const Swapchain& Context::get_swapchain() const {
-    return swapchain;
 }
 
 const Allocator& Context::get_allocator() const {

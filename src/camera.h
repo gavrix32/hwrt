@@ -6,7 +6,6 @@
 class Camera {
     glm::vec3 pos = glm::vec3(0.0f);
     glm::quat quat = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
-    glm::mat4 proj = glm::mat4(1.0f);
 
     float pitch = 0.0f;
     float yaw = 0.0f;

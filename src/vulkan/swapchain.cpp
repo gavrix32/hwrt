@@ -4,6 +4,7 @@
 #include "instance.h"
 #include "adapter.h"
 #include "device.h"
+#include "image.h"
 #include "utils.h"
 
 vk::Extent2D choose_extent(GLFWwindow* window, const vk::SurfaceCapabilitiesKHR& capabilities) {
@@ -73,6 +74,13 @@ Swapchain::Swapchain(const Instance& instance, const Adapter& adapter, const Dev
     };
 
     handle = vk::raii::SwapchainKHR(device.get(), swapchain_create_info);
+
+    const auto image_handles = handle.getImages();
+
+    images.reserve(image_handles.size());
+    for (auto image_handle : image_handles) {
+        images.emplace_back(image_handle);
+    }
 }
 
 vk::Extent2D Swapchain::get_extent() const {
@@ -83,8 +91,8 @@ vk::SurfaceFormatKHR Swapchain::get_surface_format() const {
     return format;
 }
 
-std::vector<vk::Image> Swapchain::get_images() const {
-    return handle.getImages();
+std::vector<Image>& Swapchain::get_images() {
+    return images;
 }
 
 const vk::raii::SwapchainKHR& Swapchain::get() const {

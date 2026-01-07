@@ -40,16 +40,9 @@ vk::Format srgb_to_unorm(const vk::Format format) {
 Renderer::Renderer(const bool validation) {
     SCOPED_TIMER();
 
-    ctx = std::make_unique<Context>(Window::get(), validation);
+    ctx = std::make_unique<Context>(validation);
 
-    auto swapchain_image_handles = ctx->get_swapchain().get_images();
-
-    std::vector<Image> swapchain_images;
-    swapchain_images.reserve(swapchain_image_handles.size());
-
-    for (auto handle : swapchain_image_handles) {
-        swapchain_images.emplace_back(handle);
-    }
+    swapchain = std::make_unique<Swapchain>(ctx->get_instance(), ctx->get_adapter(), ctx->get_device(), Window::get());
 
     auto adapter_props_chain = ctx->get_adapter().get().getProperties2<
         vk::PhysicalDeviceProperties2,
@@ -285,8 +278,8 @@ Renderer::Renderer(const bool validation) {
 
     vk::ImageCreateInfo rt_image_create_info{
         .imageType = vk::ImageType::e2D,
-        .format = srgb_to_unorm(ctx->get_swapchain().get_surface_format().format),
-        .extent = vk::Extent3D{ctx->get_swapchain().get_extent().width, ctx->get_swapchain().get_extent().height, 1},
+        .format = srgb_to_unorm(swapchain->get_surface_format().format),
+        .extent = vk::Extent3D{swapchain->get_extent().width, swapchain->get_extent().height, 1},
         .mipLevels = 1,
         .arrayLayers = 1,
         .samples = vk::SampleCountFlagBits::e1,
@@ -303,7 +296,7 @@ Renderer::Renderer(const bool validation) {
     vk::ImageViewCreateInfo rt_image_view_create_info{
         .image = rt_image.get(),
         .viewType = vk::ImageViewType::e2D,
-        .format = srgb_to_unorm(ctx->get_swapchain().get_surface_format().format),
+        .format = srgb_to_unorm(swapchain->get_surface_format().format),
         .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
     };
     auto rt_image_view = ctx->get_device().get().createImageView(rt_image_view_create_info);
@@ -427,10 +420,9 @@ Renderer::Renderer(const bool validation) {
     }
 
     constexpr int frames_in_flight = 2;
-    const uint32_t swapchain_image_count = ctx->get_swapchain().get_images().size();
 
     encoder = std::make_unique<Encoder>(ctx->get_device(), frames_in_flight);
-    frame_mgr = std::make_unique<FrameManager>(*ctx, frames_in_flight, swapchain_image_count);
+    frame_mgr = std::make_unique<FrameManager>(*ctx, frames_in_flight, swapchain->get_images().size());
 
     ctx->get_device().get_queue().waitIdle();
 
@@ -449,11 +441,57 @@ Renderer::Renderer(const bool validation) {
         .rt_pipeline = std::move(rt_pipeline),
         .rt_image = std::move(rt_image),
         .rt_image_view = std::move(rt_image_view),
-        .swapchain_images = std::move(swapchain_images),
     });
 }
 
-void Renderer::draw_frame(const Camera& camera) const {
+void Renderer::draw_frame(const Camera& camera) {
+    if (Window::was_resized()) {
+        ctx->get_device().get().waitIdle();
+
+        swapchain = std::make_unique<Swapchain>(ctx->get_instance(), ctx->get_adapter(), ctx->get_device(), Window::get());
+
+        // TODO: deduplicate
+        auto queue_family_index_u32 = ctx->get_device().get_queue_family_index();
+
+        vk::ImageCreateInfo rt_image_create_info{
+            .imageType = vk::ImageType::e2D,
+            .format = srgb_to_unorm(swapchain->get_surface_format().format),
+            .extent = vk::Extent3D{swapchain->get_extent().width, swapchain->get_extent().height, 1},
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .samples = vk::SampleCountFlagBits::e1,
+            .tiling = vk::ImageTiling::eOptimal,
+            .usage = vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc,
+            .sharingMode = vk::SharingMode::eExclusive,
+            .queueFamilyIndexCount = 1,
+            .pQueueFamilyIndices = &queue_family_index_u32,
+            .initialLayout = vk::ImageLayout::eUndefined,
+        };
+
+        res->rt_image = Image(rt_image_create_info, ctx->get_allocator());
+
+        auto single_time_encoder = SingleTimeEncoder(ctx->get_device());
+
+        res->rt_image.transition_layout(single_time_encoder.get_cmd(),
+                                        vk::ImageLayout::eGeneral,
+                                        vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
+                                        vk::AccessFlagBits2::eShaderWrite);
+
+        single_time_encoder.submit(ctx->get_device().get_queue());
+
+        vk::ImageViewCreateInfo rt_image_view_create_info{
+            .image = res->rt_image.get(),
+            .viewType = vk::ImageViewType::e2D,
+            .format = srgb_to_unorm(swapchain->get_surface_format().format),
+            .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
+        };
+        res->rt_image_view = ctx->get_device().get().createImageView(rt_image_view_create_info);
+
+        ctx->get_device().get().waitIdle();
+
+        return;
+    }
+
     (void) ctx->get_device().get().
                 waitForFences({frame_mgr->get_in_flight_fence()},
                               vk::True,
@@ -463,7 +501,7 @@ void Renderer::draw_frame(const Camera& camera) const {
     uint32_t image_index;
 
     vk::AcquireNextImageInfoKHR acquire_info{
-        .swapchain = ctx->get_swapchain().get(),
+        .swapchain = swapchain->get(),
         .timeout = std::numeric_limits<uint64_t>::max(),
         .semaphore = frame_mgr->get_image_available_semaphore(),
         .deviceMask = 1,
@@ -535,28 +573,28 @@ void Renderer::draw_frame(const Camera& camera) const {
                                     vk::PipelineStageFlagBits2::eTransfer,
                                     vk::AccessFlagBits2::eTransferRead);
 
-    res->swapchain_images[image_index].transition_layout(cmd,
-                                                         vk::ImageLayout::eTransferDstOptimal,
-                                                         vk::PipelineStageFlagBits2::eTransfer,
-                                                         vk::AccessFlagBits2::eTransferWrite);
+    swapchain->get_images()[image_index].transition_layout(cmd,
+                                                           vk::ImageLayout::eTransferDstOptimal,
+                                                           vk::PipelineStageFlagBits2::eTransfer,
+                                                           vk::AccessFlagBits2::eTransferWrite);
 
     vk::ImageCopy copy_region{
         .srcSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
         .dstSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
-        .extent = vk::Extent3D{ctx->get_swapchain().get_extent().width,
-                               ctx->get_swapchain().get_extent().height, 1},
+        .extent = vk::Extent3D{swapchain->get_extent().width,
+                               swapchain->get_extent().height, 1},
     };
 
     cmd.copyImage(res->rt_image.get(),
                   vk::ImageLayout::eTransferSrcOptimal,
-                  res->swapchain_images[image_index].get(),
+                  swapchain->get_images()[image_index].get(),
                   vk::ImageLayout::eTransferDstOptimal,
                   copy_region);
 
-    res->swapchain_images[image_index].transition_layout(cmd,
-                                                         vk::ImageLayout::ePresentSrcKHR,
-                                                         vk::PipelineStageFlagBits2::eBottomOfPipe,
-                                                         vk::AccessFlagBits2::eNone);
+    swapchain->get_images()[image_index].transition_layout(cmd,
+                                                           vk::ImageLayout::ePresentSrcKHR,
+                                                           vk::PipelineStageFlagBits2::eBottomOfPipe,
+                                                           vk::AccessFlagBits2::eNone);
 
     res->rt_image.transition_layout(cmd,
                                     vk::ImageLayout::eGeneral,
@@ -585,7 +623,7 @@ void Renderer::draw_frame(const Camera& camera) const {
         .waitSemaphoreCount = 1,
         .pWaitSemaphores = &*frame_mgr->get_render_finished_semaphore(image_index),
         .swapchainCount = 1,
-        .pSwapchains = &*ctx->get_swapchain().get(),
+        .pSwapchains = &*swapchain->get(),
         .pImageIndices = &image_index,
     };
 

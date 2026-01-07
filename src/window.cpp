@@ -6,11 +6,12 @@
 #include "input.h"
 #include "vulkan/utils.h"
 
-void Window::init(int width, int height, const std::string& title, const bool resizable) {
+void Window::init(int width, int height, const std::string& title) {
     SCOPED_TIMER_NAMED("\"{}\" ({}x{})", title, width, height);
 
     width_ = width;
     height_ = height;
+    resized = false;
 
     glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
 
@@ -20,7 +21,6 @@ void Window::init(int width, int height, const std::string& title, const bool re
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, resizable ? GLFW_TRUE : GLFW_FALSE);
 
     handle = glfwCreateWindow(width, height, title.c_str(), nullptr, nullptr);
 
@@ -29,6 +29,8 @@ void Window::init(int width, int height, const std::string& title, const bool re
         glfwTerminate();
         throw std::runtime_error("Failed to create GLFW window");
     }
+
+    glfwSetFramebufferSizeCallback(handle, framebuffer_size_callback);
 
     Input::init(handle);
 }
@@ -62,10 +64,24 @@ float Window::get_aspect_ratio() {
     return static_cast<float>(width_) / static_cast<float>(height_);
 }
 
+bool Window::was_resized() {
+    if (resized) {
+        resized = false;
+        return true;
+    }
+    return false;
+}
+
 void Window::poll_events() {
     glfwPollEvents();
 }
 
 void Window::close() {
     glfwSetWindowShouldClose(handle, GLFW_TRUE);
+}
+
+void Window::framebuffer_size_callback(GLFWwindow* /*window*/, const int width, const int height) {
+    width_ = width;
+    height_ = height;
+    resized = true;
 }

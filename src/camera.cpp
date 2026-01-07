@@ -3,7 +3,6 @@
 #include "window.h"
 
 Camera::Camera() {
-    proj = glm::perspective(glm::radians(fov), Window::get_aspect_ratio(), 0.001f, 1000.0f);
 }
 
 glm::vec3 Camera::get_pos() const {
@@ -17,7 +16,7 @@ glm::mat4 Camera::get_view() const {
 }
 
 glm::mat4 Camera::get_proj() const {
-    return proj;
+    return glm::perspective(glm::radians(fov), Window::get_aspect_ratio(), 0.001f, 1000.0f);;
 }
 
 void Camera::set_pos(const glm::vec3 new_pos) {
@@ -35,7 +34,6 @@ void Camera::set_rot(const glm::vec2 new_rot) {
 
 void Camera::set_fov(const float new_fov) {
     fov = new_fov;
-    proj = glm::perspective(glm::radians(fov), Window::get_aspect_ratio(), 0.001f, 1000.0f);
 }
 
 glm::vec2 Camera::get_rot() const {

@@ -7,10 +7,10 @@
 #include "window.h"
 #include "vulkan/device.h"
 
-#define WIDTH 800
-#define HEIGHT 600
+#define WIDTH 1280
+#define HEIGHT 720
 
-// TODO: Abstractions (blas, tlas, sbt, image builder, imgui)
+// TODO: Abstractions (blas, tlas, sbt, image, view, imgui)
 
 #ifdef NDEBUG
 constexpr bool validation = false;
@@ -31,11 +31,13 @@ int main() {
     camera.set_pos(glm::vec3(0.0f, 0.0f, 1.0f));
 
     {
+        constexpr float sensitivity = 0.01f;
+        float speed = 3.0f;
         auto timer = Timer();
         float delta = 0.0f;
         float accumulator = 0.0f;
 
-        const Renderer renderer(validation);
+        Renderer renderer(validation);
 
         bool mouse_grab = false;
         while (!Window::should_close()) {
@@ -52,19 +54,21 @@ int main() {
                 Input::set_cursor_grab(mouse_grab);
             }
 
-            if (mouse_grab) {
-                constexpr float sensitivity = 0.01f;
-                const float speed = 3.0f * delta;
+            speed += static_cast<float>(Input::get_mouse_scroll()) * 0.0001f;
+            speed = std::max(speed, 0.0f);
 
+            if (mouse_grab) {
                 const auto mouse_delta = Input::get_mouse_delta() * sensitivity;
                 camera.set_rot(camera.get_rot() + glm::vec2(mouse_delta.y, -mouse_delta.x));
 
-                if (Input::key_down(GLFW_KEY_W)) camera.move_z(-speed);
-                if (Input::key_down(GLFW_KEY_A)) camera.move_x(-speed);
-                if (Input::key_down(GLFW_KEY_S)) camera.move_z(speed);
-                if (Input::key_down(GLFW_KEY_D)) camera.move_x(speed);
-                if (Input::key_down(GLFW_KEY_SPACE)) camera.move_y(speed);
-                if (Input::key_down(GLFW_KEY_LEFT_SHIFT)) camera.move_y(-speed);
+                const float s = speed * delta;
+
+                if (Input::key_down(GLFW_KEY_W)) camera.move_z(-s);
+                if (Input::key_down(GLFW_KEY_A)) camera.move_x(-s);
+                if (Input::key_down(GLFW_KEY_S)) camera.move_z(s);
+                if (Input::key_down(GLFW_KEY_D)) camera.move_x(s);
+                if (Input::key_down(GLFW_KEY_SPACE)) camera.move_y(-s);
+                if (Input::key_down(GLFW_KEY_LEFT_SHIFT)) camera.move_y(s);
             }
 
             renderer.draw_frame(camera);

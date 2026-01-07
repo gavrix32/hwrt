@@ -4,6 +4,7 @@
 #include "vulkan/image.h"
 #include "vulkan/encoder.h"
 #include "vulkan/pipeline.h"
+#include "vulkan/swapchain.h"
 #include "context.h"
 #include "frame.h"
 #include "camera.h"
@@ -29,8 +30,6 @@ struct Resources {
 
     Image rt_image;
     vk::raii::ImageView rt_image_view;
-
-    std::vector<Image> swapchain_images;
 };
 
 class Renderer {
@@ -38,11 +37,12 @@ class Renderer {
     std::unique_ptr<Resources> res;
     std::unique_ptr<Encoder> encoder;
     std::unique_ptr<FrameManager> frame_mgr;
+    std::unique_ptr<Swapchain> swapchain;
 
 public:
     explicit Renderer(bool validation);
 
-    void draw_frame(const Camera& camera) const;
+    void draw_frame(const Camera& camera);
 
     [[nodiscard]] Context& get_ctx() const;
     [[nodiscard]] Resources& get_res() const;
