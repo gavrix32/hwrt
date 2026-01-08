@@ -33,8 +33,6 @@ const vk::raii::CommandBuffer& Encoder::get_cmd() const {
 }
 
 SingleTimeEncoder::SingleTimeEncoder(const Device& device) : command_pool(nullptr), command_buffer(nullptr) {
-    SCOPED_TIMER();
-
     const vk::CommandPoolCreateInfo command_pool_create_info{
         .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
         .queueFamilyIndex = device.get_queue_family_index(),
@@ -54,14 +52,21 @@ SingleTimeEncoder::SingleTimeEncoder(const Device& device) : command_pool(nullpt
     command_buffer.begin(command_buffer_begin_info);
 }
 
-void SingleTimeEncoder::submit(const vk::raii::Queue& queue) const {
+void SingleTimeEncoder::submit(const Device& device) const {
     command_buffer.end();
 
     const vk::SubmitInfo submit_info{
         .commandBufferCount = 1,
         .pCommandBuffers = &*command_buffer,
     };
-    queue.submit(submit_info);
+
+    const auto fence = device.get().createFence({});
+
+    device.get_queue().submit(submit_info, fence);
+
+    (void) device.get().waitForFences({fence},
+                                      vk::True,
+                                      std::numeric_limits<uint64_t>::max());
 }
 
 const vk::raii::CommandBuffer& SingleTimeEncoder::get_cmd() const {

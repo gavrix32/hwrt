@@ -29,6 +29,7 @@ public:
     explicit FrameManager(const Context& ctx, int frames_in_flight, int swapchain_image_count);
 
     void update();
+    void recreate_image_available_semaphores(const Device& device);
 
     [[nodiscard]] int get_frame_index() const;
     [[nodiscard]] const vk::raii::Fence& get_in_flight_fence() const;

@@ -10,6 +10,8 @@
 #include "camera.h"
 
 struct Resources {
+    vk::raii::SurfaceKHR surface;
+
     Buffer vertex_buffer;
     Buffer index_buffer;
 
@@ -43,6 +45,7 @@ public:
     explicit Renderer(bool validation);
 
     void draw_frame(const Camera& camera);
+    void recreate();
 
     [[nodiscard]] Context& get_ctx() const;
     [[nodiscard]] Resources& get_res() const;

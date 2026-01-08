@@ -43,23 +43,18 @@ vk::PresentModeKHR choose_present_mode(const std::vector<vk::PresentModeKHR>& av
     return available_present_modes[0];
 }
 
-Swapchain::Swapchain(const Instance& instance, const Adapter& adapter, const Device& device,
-                     GLFWwindow* window) : surface_khr(nullptr), handle(nullptr) {
+Swapchain::Swapchain(const Adapter& adapter, const Device& device,
+                     GLFWwindow* window, const vk::SurfaceKHR& surface)
+    : handle(nullptr) {
     SCOPED_TIMER();
 
-    VkSurfaceKHR _surface;
-    if (glfwCreateWindowSurface(*instance.get(), window, nullptr, &_surface) != 0) {
-        throw std::runtime_error("Failed to create window surface");
-    }
-    surface_khr = vk::raii::SurfaceKHR(instance.get(), _surface);
-
-    const auto surface_capabilities = adapter.get().getSurfaceCapabilitiesKHR(*surface_khr);
+    const auto surface_capabilities = adapter.get().getSurfaceCapabilitiesKHR(surface);
 
     extent = choose_extent(window, surface_capabilities);
-    format = choose_format(adapter.get().getSurfaceFormatsKHR(*surface_khr));
+    format = choose_format(adapter.get().getSurfaceFormatsKHR(surface));
 
     const vk::SwapchainCreateInfoKHR swapchain_create_info{
-        .surface = *surface_khr,
+        .surface = surface,
         .minImageCount = surface_capabilities.minImageCount,
         .imageFormat = format.format,
         .imageColorSpace = format.colorSpace,
@@ -69,8 +64,8 @@ Swapchain::Swapchain(const Instance& instance, const Adapter& adapter, const Dev
         .imageSharingMode = vk::SharingMode::eExclusive,
         .preTransform = surface_capabilities.currentTransform,
         .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
-        .presentMode = choose_present_mode(adapter.get().getSurfacePresentModesKHR(*surface_khr)),
-        .clipped = true
+        .presentMode = choose_present_mode(adapter.get().getSurfacePresentModesKHR(surface)),
+        .clipped = true,
     };
 
     handle = vk::raii::SwapchainKHR(device.get(), swapchain_create_info);

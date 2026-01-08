@@ -2,8 +2,7 @@
 
 #include "window.h"
 
-Camera::Camera() {
-}
+Camera::Camera() = default;
 
 glm::vec3 Camera::get_pos() const {
     return pos;
@@ -16,7 +15,7 @@ glm::mat4 Camera::get_view() const {
 }
 
 glm::mat4 Camera::get_proj() const {
-    return glm::perspective(glm::radians(fov), Window::get_aspect_ratio(), 0.001f, 1000.0f);;
+    return glm::perspective(glm::radians(fov), Window::get_aspect_ratio(), 0.001f, 1000.0f);
 }
 
 void Camera::set_pos(const glm::vec3 new_pos) {

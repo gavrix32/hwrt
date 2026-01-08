@@ -46,6 +46,12 @@ void FrameManager::update() {
     current_frame = (current_frame + 1) % frames_in_flight;
 }
 
+void FrameManager::recreate_image_available_semaphores(const Device& device) {
+    for (int i = 0; i < frames_in_flight; ++i) {
+        image_available_semaphores[i] = device.get().createSemaphore(vk::SemaphoreCreateInfo{});
+    }
+}
+
 const vk::raii::Fence& FrameManager::get_in_flight_fence() const {
     return in_flight_fences[current_frame];
 }

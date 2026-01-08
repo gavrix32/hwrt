@@ -1,5 +1,7 @@
 #include "renderer.h"
 
+#include <GLFW/glfw3.h>
+
 #include <iostream>
 #include <fstream>
 
@@ -42,7 +44,13 @@ Renderer::Renderer(const bool validation) {
 
     ctx = std::make_unique<Context>(validation);
 
-    swapchain = std::make_unique<Swapchain>(ctx->get_instance(), ctx->get_adapter(), ctx->get_device(), Window::get());
+    VkSurfaceKHR surface_;
+    if (glfwCreateWindowSurface(*ctx->get_instance().get(), Window::get(), nullptr, &surface_) != 0) {
+        throw std::runtime_error("Failed to create window surface");
+    }
+    auto surface = vk::raii::SurfaceKHR(ctx->get_instance().get(), surface_);
+
+    swapchain = std::make_unique<Swapchain>(ctx->get_adapter(), ctx->get_device(), Window::get(), surface);
 
     auto adapter_props_chain = ctx->get_adapter().get().getProperties2<
         vk::PhysicalDeviceProperties2,
@@ -306,7 +314,7 @@ Renderer::Renderer(const bool validation) {
                                vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
                                vk::AccessFlagBits2::eShaderWrite);
 
-    single_time_encoder.submit(ctx->get_device().get_queue());
+    single_time_encoder.submit(ctx->get_device());
 
     // Push Descriptors & Pipeline Layout
 
@@ -427,6 +435,7 @@ Renderer::Renderer(const bool validation) {
     ctx->get_device().get_queue().waitIdle();
 
     res = std::make_unique<Resources>(Resources{
+        .surface = std::move(surface),
         .vertex_buffer = std::move(vertex_buffer),
         .index_buffer = std::move(index_buffer),
         .blas_buffer = std::move(blas_buffer),
@@ -445,60 +454,9 @@ Renderer::Renderer(const bool validation) {
 }
 
 void Renderer::draw_frame(const Camera& camera) {
-    if (Window::was_resized()) {
-        ctx->get_device().get().waitIdle();
-
-        swapchain = std::make_unique<Swapchain>(ctx->get_instance(), ctx->get_adapter(), ctx->get_device(), Window::get());
-
-        // TODO: deduplicate
-        auto queue_family_index_u32 = ctx->get_device().get_queue_family_index();
-
-        vk::ImageCreateInfo rt_image_create_info{
-            .imageType = vk::ImageType::e2D,
-            .format = srgb_to_unorm(swapchain->get_surface_format().format),
-            .extent = vk::Extent3D{swapchain->get_extent().width, swapchain->get_extent().height, 1},
-            .mipLevels = 1,
-            .arrayLayers = 1,
-            .samples = vk::SampleCountFlagBits::e1,
-            .tiling = vk::ImageTiling::eOptimal,
-            .usage = vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc,
-            .sharingMode = vk::SharingMode::eExclusive,
-            .queueFamilyIndexCount = 1,
-            .pQueueFamilyIndices = &queue_family_index_u32,
-            .initialLayout = vk::ImageLayout::eUndefined,
-        };
-
-        res->rt_image = Image(rt_image_create_info, ctx->get_allocator());
-
-        auto single_time_encoder = SingleTimeEncoder(ctx->get_device());
-
-        res->rt_image.transition_layout(single_time_encoder.get_cmd(),
-                                        vk::ImageLayout::eGeneral,
-                                        vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
-                                        vk::AccessFlagBits2::eShaderWrite);
-
-        single_time_encoder.submit(ctx->get_device().get_queue());
-
-        vk::ImageViewCreateInfo rt_image_view_create_info{
-            .image = res->rt_image.get(),
-            .viewType = vk::ImageViewType::e2D,
-            .format = srgb_to_unorm(swapchain->get_surface_format().format),
-            .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
-        };
-        res->rt_image_view = ctx->get_device().get().createImageView(rt_image_view_create_info);
-
-        ctx->get_device().get().waitIdle();
-
-        return;
-    }
-
-    (void) ctx->get_device().get().
-                waitForFences({frame_mgr->get_in_flight_fence()},
-                              vk::True,
-                              std::numeric_limits<uint64_t>::max());
-    ctx->get_device().get().resetFences({frame_mgr->get_in_flight_fence()});
-
-    uint32_t image_index;
+    (void) ctx->get_device().get().waitForFences({frame_mgr->get_in_flight_fence()},
+                                                 vk::True,
+                                                 std::numeric_limits<uint64_t>::max());
 
     vk::AcquireNextImageInfoKHR acquire_info{
         .swapchain = swapchain->get(),
@@ -506,7 +464,18 @@ void Renderer::draw_frame(const Camera& camera) {
         .semaphore = frame_mgr->get_image_available_semaphore(),
         .deviceMask = 1,
     };
-    image_index = ctx->get_device().get().acquireNextImage2KHR(acquire_info).value;
+    auto acquire_result = ctx->get_device().get().acquireNextImage2KHR(acquire_info);
+
+    if (acquire_result.result == vk::Result::eErrorOutOfDateKHR ||
+        acquire_result.result == vk::Result::eSuboptimalKHR) {
+        recreate();
+        frame_mgr->recreate_image_available_semaphores(ctx->get_device());
+        return;
+    }
+
+    ctx->get_device().get().resetFences({frame_mgr->get_in_flight_fence()});
+
+    uint32_t image_index = acquire_result.value;
 
     encoder->begin(frame_mgr->get_frame_index());
     auto& cmd = encoder->get_cmd();
@@ -564,8 +533,8 @@ void Renderer::draw_frame(const Camera& camera) {
                      res->rmiss_region,
                      res->rchit_region,
                      {},
-                     Window::get_width(),
-                     Window::get_height(),
+                     swapchain->get_extent().width,
+                     swapchain->get_extent().height,
                      1);
 
     res->rt_image.transition_layout(cmd,
@@ -627,9 +596,57 @@ void Renderer::draw_frame(const Camera& camera) {
         .pImageIndices = &image_index,
     };
 
-    (void) ctx->get_device().get_queue().presentKHR(present_info);
-
+    if (auto result = ctx->get_device().get_queue().presentKHR(present_info);
+        result == vk::Result::eSuboptimalKHR ||
+        result == vk::Result::eErrorOutOfDateKHR
+    ) {
+        recreate();
+    }
     frame_mgr->update();
+}
+
+void Renderer::recreate() {
+    SCOPED_TIMER();
+
+    ctx->get_device().get().waitIdle();
+
+    swapchain = std::make_unique<Swapchain>(ctx->get_adapter(), ctx->get_device(), Window::get(), res->surface);
+
+    auto queue_family_index_u32 = ctx->get_device().get_queue_family_index();
+
+    const vk::ImageCreateInfo rt_image_create_info{
+        .imageType = vk::ImageType::e2D,
+        .format = srgb_to_unorm(swapchain->get_surface_format().format),
+        .extent = vk::Extent3D{swapchain->get_extent().width, swapchain->get_extent().height, 1},
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = vk::SampleCountFlagBits::e1,
+        .tiling = vk::ImageTiling::eOptimal,
+        .usage = vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc,
+        .sharingMode = vk::SharingMode::eExclusive,
+        .queueFamilyIndexCount = 1,
+        .pQueueFamilyIndices = &queue_family_index_u32,
+        .initialLayout = vk::ImageLayout::eUndefined,
+    };
+
+    res->rt_image = Image(rt_image_create_info, ctx->get_allocator());
+
+    const auto single_time_encoder = SingleTimeEncoder(ctx->get_device());
+
+    res->rt_image.transition_layout(single_time_encoder.get_cmd(),
+                                    vk::ImageLayout::eGeneral,
+                                    vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
+                                    vk::AccessFlagBits2::eShaderWrite);
+
+    single_time_encoder.submit(ctx->get_device());
+
+    const vk::ImageViewCreateInfo rt_image_view_create_info{
+        .image = res->rt_image.get(),
+        .viewType = vk::ImageViewType::e2D,
+        .format = srgb_to_unorm(swapchain->get_surface_format().format),
+        .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
+    };
+    res->rt_image_view = ctx->get_device().get().createImageView(rt_image_view_create_info);
 }
 
 Context& Renderer::get_ctx() const {
