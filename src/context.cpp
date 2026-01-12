@@ -6,7 +6,8 @@ std::vector device_extensions = {
     vk::KHRSwapchainExtensionName,
     vk::KHRDeferredHostOperationsExtensionName,
     vk::KHRAccelerationStructureExtensionName,
-    vk::KHRRayTracingPipelineExtensionName
+    vk::KHRRayTracingPipelineExtensionName,
+    vk::KHRShaderClockExtensionName,
 };
 
 Context::Context(const bool validation)

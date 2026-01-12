@@ -13,7 +13,7 @@ for SHADER in raytrace.rgen raytrace.rmiss raytrace.rchit; do
 
     if [[ ! -f "$DST" || "$SRC" -nt "$DST" ]]; then
         echo "- $SHADER"
-        slangc -I "$SHADER_DIR" "$SRC" -target spirv -profile spirv_1_4 -matrix-layout-column-major -o "$DST"
+        slangc -I "$SHADER_DIR" "$SRC" -target spirv -profile spirv_1_6 -matrix-layout-column-major -capability spvShaderClockKHR -o "$DST"
 
         if [[ $? -ne 0 ]]; then
             echo "Failed to compile $SHADER"

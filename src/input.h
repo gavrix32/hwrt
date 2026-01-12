@@ -37,8 +37,9 @@ public:
     [[nodiscard]] static bool mouse_button_pressed(int button);
     [[nodiscard]] static bool mouse_button_released(int button);
 
-    [[nodiscard]] static glm::vec2 get_mouse_delta();
     [[nodiscard]] static glm::vec2 get_mouse_pos();
+    [[nodiscard]] static glm::vec2 get_mouse_delta();
+
     [[nodiscard]] static double get_mouse_scroll();
 
     static void set_cursor_grab(bool grab);

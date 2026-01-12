@@ -2,29 +2,28 @@
 
 #include <GLFW/glfw3.h>
 
+#include <tiny_gltf.h>
+
 #include <iostream>
 #include <fstream>
 
 #include "camera.h"
 #include "window.h"
+#include "glm/gtc/type_ptr.hpp"
 #include "spdlog/spdlog.h"
 #include "vulkan/pipeline.h"
 #include "vulkan/utils.h"
 
 struct Vertex {
-    float pos[3];
-    float color[3];
+    std::array<float, 3> pos;
+    std::array<float, 3> color;
 };
 
-std::vector<Vertex> vertices = {
-    {{0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
-    {{-0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},
-};
-
-std::vector<uint32_t> indices = {
-    0, 1, 2,
-};
+// struct Mesh {
+//     uint32_t first_index;
+//     uint32_t index_count;
+//     uint32_t vertex_offset;
+// };
 
 // TODO: is it necessary?
 vk::Format srgb_to_unorm(const vk::Format format) {
@@ -37,6 +36,122 @@ vk::Format srgb_to_unorm(const vk::Format format) {
         case vk::Format::eB8G8R8A8Srgb: return vk::Format::eB8G8R8A8Unorm;
         default: return format;
     }
+}
+
+void process_node(
+    const tinygltf::Model& model,
+    const int node_index,
+    const glm::mat4& parent_transform,
+    std::vector<Vertex>& vertices,
+    std::vector<uint32_t>& indices) {
+    const auto& node = model.nodes[node_index];
+
+    glm::mat4 local_transform;
+
+    if (node.matrix.size() == 16) {
+        local_transform = glm::make_mat4(node.matrix.data());
+    } else {
+        auto translation = glm::vec3(0.0f);
+        auto rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+        auto scale = glm::vec3(1.0f);
+
+        if (node.translation.size() == 3) { translation = glm::make_vec3(node.translation.data()); }
+        if (node.rotation.size() == 4) { rotation = glm::make_quat(node.rotation.data()); }
+        if (node.scale.size() == 3) { scale = glm::make_vec3(node.scale.data()); }
+
+        local_transform = glm::translate(glm::mat4(1.0f), translation) *
+                          glm::mat4(rotation) *
+                          glm::scale(glm::mat4(1.0f), scale);
+    }
+
+    const glm::mat4 global_transform = parent_transform * local_transform;
+
+    if (node.mesh >= 0) {
+        const auto& mesh = model.meshes[node.mesh];
+        spdlog::info("    Processing mesh: {} in node {}", mesh.name, node.name);
+
+        for (const auto& primitive : mesh.primitives) {
+            if (primitive.indices < 0) {
+                spdlog::error("Non indexed geomtry in primitive");
+                continue;
+            }
+            const auto idx_accessor = model.accessors[primitive.indices];
+            const auto idx_buffer_view = model.bufferViews[idx_accessor.bufferView];
+            const auto idx_buffer = model.buffers[idx_buffer_view.buffer];
+
+            const unsigned char* idx_data_ptr = idx_buffer.data.data() + idx_buffer_view.byteOffset + idx_accessor.byteOffset;
+            const int idx_stride = idx_accessor.ByteStride(idx_buffer_view);
+
+            const auto index_count = idx_accessor.count;
+            indices.reserve(index_count);
+
+            for (auto i = 0; i < index_count; ++i) {
+                const unsigned char* index_ptr = idx_data_ptr + i * idx_stride;
+                uint32_t index = 0;
+
+                switch (idx_accessor.componentType) {
+                    case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE: index = static_cast<uint32_t>(*index_ptr);
+                        break;
+                    case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT
+                    : index = static_cast<uint32_t>(*reinterpret_cast<const uint16_t*>(index_ptr));
+                        break;
+                    case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT: index = *reinterpret_cast<const uint32_t*>(index_ptr);
+                        break;
+                    default: spdlog::critical("glTF unknown index component type: {}", idx_accessor.componentType);
+                }
+                indices.push_back(index + vertices.size());
+            }
+
+            const auto pos_accessor = model.accessors[primitive.attributes.at("POSITION")];
+            const auto pos_buffer_view = model.bufferViews[pos_accessor.bufferView];
+            const auto pos_buffer = model.buffers[pos_buffer_view.buffer];
+
+            const unsigned char* pos_data_ptr = pos_buffer.data.data() + pos_buffer_view.byteOffset + pos_accessor.byteOffset;
+            const int pos_stride = pos_accessor.ByteStride(pos_buffer_view);
+
+            for (auto i = 0; i < pos_accessor.count; ++i) {
+                const auto pos_ptr = reinterpret_cast<const float*>(pos_data_ptr + i * pos_stride);
+
+                const auto local_pos = glm::vec4(pos_ptr[0], pos_ptr[1], pos_ptr[2], 1.0f);
+                const auto world_pos = global_transform * local_pos;
+
+                Vertex vertex{};
+                vertex.pos = {world_pos.x, -world_pos.y, world_pos.z};
+                vertex.color = {1.0f, 1.0f, 1.0f};
+
+                vertices.push_back(vertex);
+            }
+        }
+    }
+    for (const int child_index : node.children) {
+        process_node(model, child_index, global_transform, vertices, indices);
+    }
+}
+
+void load_model(const std::string& filename,
+                std::vector<Vertex>& vertices,
+                std::vector<uint32_t>& indices) {
+    SCOPED_TIMER();
+
+    tinygltf::Model model;
+    tinygltf::TinyGLTF loader;
+    std::string err;
+    std::string warn;
+
+    const bool ret = loader.LoadBinaryFromFile(&model, &err, &warn, filename);;
+
+    if (!warn.empty()) spdlog::warn("glTF warning: {}", warn);
+    if (!err.empty()) spdlog::error("glTF error: {}", err);
+    if (!ret) spdlog::critical("glTF failed to parse: {}", filename);
+
+    for (const auto& scene : model.scenes) {
+        spdlog::info("Processing scene: {}", scene.name);
+
+        for (const int node_index : scene.nodes) {
+            process_node(model, node_index, glm::mat4(1.0f), vertices, indices);
+        }
+    }
+    spdlog::info("{} faces", indices.size() / 3);
 }
 
 Renderer::Renderer(const bool validation) {
@@ -60,6 +175,23 @@ Renderer::Renderer(const bool validation) {
 
     auto rt_pipeline_props = adapter_props_chain.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
     auto as_props = adapter_props_chain.get<vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
+
+    // std::vector<Vertex> vertices = {
+    //     {{0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
+    //     {{0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
+    //     {{-0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+    // };
+    //
+    // std::vector<uint32_t> indices = {
+    //     0, 1, 2,
+    // };
+
+    spdlog::info("Loading model...");
+
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
+
+    load_model("../assets/models/ABeautifulGame.glb", vertices, indices);
 
     auto vertex_buffer = BufferBuilder()
                          .size(sizeof(Vertex) * vertices.size())

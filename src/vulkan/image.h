@@ -37,4 +37,5 @@ public:
 
     [[nodiscard]] const vk::Image& get() const;
     [[nodiscard]] VmaAllocation get_allocation() const;
+    [[nodiscard]] vk::ImageLayout get_layout() const;
 };

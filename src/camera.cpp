@@ -15,7 +15,7 @@ glm::mat4 Camera::get_view() const {
 }
 
 glm::mat4 Camera::get_proj() const {
-    return glm::perspective(glm::radians(fov), Window::get_aspect_ratio(), 0.001f, 1000.0f);
+    return glm::perspective(glm::radians(fov), Window::get_aspect_ratio(), 0.001f, 10000.0f);
 }
 
 void Camera::set_pos(const glm::vec3 new_pos) {
@@ -36,7 +36,7 @@ void Camera::set_fov(const float new_fov) {
 }
 
 glm::vec2 Camera::get_rot() const {
-    return glm::vec2(pitch, yaw);
+    return {pitch, yaw};
 }
 
 void Camera::move(const float x, const float y, const float z) {

@@ -1,0 +1,1 @@
+Model from Khronos glTF-Sample-Assets. License: CC-BY 4.0. Source: https://github.com/KhronosGroup/glTF-Sample-Assets/

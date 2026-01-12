@@ -10,6 +10,7 @@ find_package(glfw3 REQUIRED)
 add_subdirectory(external/spdlog)
 add_subdirectory(external/vma)
 add_subdirectory(external/glm)
+add_subdirectory(external/tinygltf)
 
 #if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 #    add_compile_options(-fsanitize=address,undefined -g -fno-omit-frame-pointer)
@@ -50,6 +51,7 @@ target_link_libraries(hwrt PRIVATE
         spdlog::spdlog_header_only
         GPUOpen::VulkanMemoryAllocator
         glm::glm
+        tinygltf
 )
 
 target_compile_definitions(hwrt PRIVATE

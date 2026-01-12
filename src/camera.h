@@ -9,7 +9,7 @@ class Camera {
 
     float pitch = 0.0f;
     float yaw = 0.0f;
-    float fov = 90.0f;
+    float fov = 70.0f;
 
 public:
     explicit Camera();

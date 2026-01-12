@@ -107,3 +107,7 @@ const vk::Image& Image::get() const {
 VmaAllocation Image::get_allocation() const {
     return vma_allocation;
 }
+
+vk::ImageLayout Image::get_layout() const {
+    return layout;
+}

@@ -15,6 +15,7 @@ void Input::init(GLFWwindow* window) {
 
 void Input::update() {
     mouse_delta = {0.0f, 0.0f};
+    scroll = 0.0;
 
     std::ranges::copy(keys_current, keys_last.begin());
     std::ranges::copy(mouse_current, mouse_last.begin());
@@ -46,12 +47,12 @@ bool Input::mouse_button_released(const int button) {
     return !mouse_current[button] && mouse_last[button];
 }
 
-glm::vec2 Input::get_mouse_delta() {
-    return mouse_delta;
-}
-
 glm::vec2 Input::get_mouse_pos() {
     return mouse_pos;
+}
+
+glm::vec2 Input::get_mouse_delta() {
+    return mouse_delta;
 }
 
 double Input::get_mouse_scroll() {
@@ -89,5 +90,5 @@ void Input::cursor_position_callback(GLFWwindow* /*window*/, const double xpos, 
 }
 
 void Input::scroll_callback(GLFWwindow* /*window*/, double /*xoffset*/, const double yoffset) {
-    scroll = yoffset;
+    scroll += yoffset;
 }

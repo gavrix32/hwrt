@@ -31,7 +31,6 @@ int main() {
     camera.set_pos(glm::vec3(0.0f, 0.0f, 1.0f));
 
     {
-        constexpr float sensitivity = 0.01f;
         float speed = 3.0f;
         auto timer = Timer();
         float delta = 0.0f;
@@ -54,10 +53,15 @@ int main() {
                 Input::set_cursor_grab(mouse_grab);
             }
 
-            speed += static_cast<float>(Input::get_mouse_scroll()) * 0.0001f;
-            speed = std::max(speed, 0.0f);
+            if (const auto scroll = static_cast<float>(Input::get_mouse_scroll());
+                scroll != 0.0f && mouse_grab
+            ) {
+                speed += speed * scroll * 0.1f;
+                speed = std::max(speed, 0.001f);
+            }
 
             if (mouse_grab) {
+                constexpr float sensitivity = 0.005f;
                 const auto mouse_delta = Input::get_mouse_delta() * sensitivity;
                 camera.set_rot(camera.get_rot() + glm::vec2(mouse_delta.y, -mouse_delta.x));
 
