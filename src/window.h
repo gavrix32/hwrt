@@ -23,6 +23,8 @@ public:
     [[nodiscard]] static bool was_resized();
 
     static void poll_events();
+    static void hide();
+    static void show();
     static void close();
 
     static void framebuffer_size_callback(GLFWwindow* window, int width, int height);

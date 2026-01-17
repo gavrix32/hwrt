@@ -8,11 +8,16 @@
 
 std::string_view get_physical_device_type_name(const vk::PhysicalDeviceType type) {
     switch (type) {
-        case vk::PhysicalDeviceType::eDiscreteGpu: return "discrete";
-        case vk::PhysicalDeviceType::eIntegratedGpu: return "integrated";
-        case vk::PhysicalDeviceType::eVirtualGpu: return "virtual";
-        case vk::PhysicalDeviceType::eCpu: return "cpu";
-        default: return "unknown";
+        case vk::PhysicalDeviceType::eDiscreteGpu:
+            return "discrete";
+        case vk::PhysicalDeviceType::eIntegratedGpu:
+            return "integrated";
+        case vk::PhysicalDeviceType::eVirtualGpu:
+            return "virtual";
+        case vk::PhysicalDeviceType::eCpu:
+            return "cpu";
+        default:
+            return "unknown";
     }
 }
 
@@ -61,8 +66,4 @@ Adapter::Adapter(const Instance& instance, const std::vector<const char*>& requi
     if (handle == nullptr) {
         spdlog::critical("Failed to find a physical device with support for all required extensions");
     }
-}
-
-const vk::raii::PhysicalDevice& Adapter::get() const {
-    return handle;
 }

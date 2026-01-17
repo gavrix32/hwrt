@@ -12,6 +12,7 @@ struct UniformBuffer {
 [vk::binding(2, 0)]
 ConstantBuffer<UniformBuffer> uniform;
 
+// Source: https://www.shadertoy.com/view/XtGGzG
 float3 viridis_quintic(float x, float2 range) {
 	x = saturate((x - range.x) / (range.y - range.x));
 	float4 x1 = float4( 1.0, x, x * x, x * x * x ); // 1 x x2 x3
@@ -23,6 +24,7 @@ float3 viridis_quintic(float x, float2 range) {
 	);
 }
 
+// Source: https://www.shadertoy.com/view/XtGGzG
 float3 inferno_quintic(float x, float2 range) {
 	x = saturate((x - range.x) / (range.y - range.x));
 	float4 x1 = float4( 1.0, x, x * x, x * x * x ); // 1 x x2 x3
@@ -60,7 +62,7 @@ void main() {
     float diff = 0.0;
     diff = float(end - start);
 
-    //color = inferno_quintic(diff, float2(10000.0, 100000.0));
+    //color = inferno_quintic(diff, float2(10000.0, 1000000.0));
 
     out_image[int2(launch_id)] = float4(color, 1.0);
 }

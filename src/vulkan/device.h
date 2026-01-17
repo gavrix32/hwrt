@@ -5,8 +5,8 @@
 class Adapter;
 
 class Device {
-    vk::raii::Device vk_device;
-    vk::raii::Queue vk_queue;
+    vk::raii::Device handle;
+    vk::raii::Queue queue;
     uint32_t queue_family_index;
 
 public:

@@ -4,8 +4,8 @@
 #include "device.h"
 #include "utils.h"
 
-Device::Device(const Adapter& adapter, const std::vector<const char*>& required_extensions) : vk_device(nullptr),
-    vk_queue(nullptr), queue_family_index(0) {
+Device::Device(const Adapter& adapter, const std::vector<const char*>& required_extensions) : handle(nullptr),
+    queue(nullptr), queue_family_index(0) {
     SCOPED_TIMER();
 
     auto queue_family_properties = adapter.get().getQueueFamilyProperties();
@@ -66,16 +66,16 @@ Device::Device(const Adapter& adapter, const std::vector<const char*>& required_
         .ppEnabledExtensionNames = required_extensions.data(),
     };
 
-    vk_device = vk::raii::Device(adapter.get(), device_create_info);
-    vk_queue = vk::raii::Queue(vk_device, queue_family_index, 0);
+    handle = vk::raii::Device(adapter.get(), device_create_info);
+    queue = vk::raii::Queue(handle, queue_family_index, 0);
 }
 
 const vk::raii::Device& Device::get() const {
-    return vk_device;
+    return handle;
 }
 
 const vk::raii::Queue& Device::get_queue() const {
-    return vk_queue;
+    return queue;
 }
 
 uint32_t Device::get_queue_family_index() const {

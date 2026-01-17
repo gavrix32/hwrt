@@ -15,7 +15,9 @@ glm::mat4 Camera::get_view() const {
 }
 
 glm::mat4 Camera::get_proj() const {
-    return glm::perspective(glm::radians(fov), Window::get_aspect_ratio(), 0.001f, 10000.0f);
+    auto proj = glm::perspective(glm::radians(fov), Window::get_aspect_ratio(), 0.001f, 10000.0f);
+    proj[1][1] *= -1.0f;
+    return proj;
 }
 
 void Camera::set_pos(const glm::vec3 new_pos) {

@@ -6,5 +6,4 @@ ColumnLimit: 130
 BinPackArguments: false
 AllowAllArgumentsOnNextLine: false
 AllowShortIfStatementsOnASingleLine: true
-AllowShortCaseLabelsOnASingleLine: true
 SpaceAfterCStyleCast: true

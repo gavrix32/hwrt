@@ -76,6 +76,14 @@ void Window::poll_events() {
     glfwPollEvents();
 }
 
+void Window::hide() {
+    glfwHideWindow(handle);
+}
+
+void Window::show() {
+    glfwShowWindow(handle);
+}
+
 void Window::close() {
     glfwSetWindowShouldClose(handle, GLFW_TRUE);
 }

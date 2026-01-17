@@ -7,19 +7,19 @@
 #include "vulkan/swapchain.h"
 #include "context.h"
 #include "frame.h"
-#include "camera.h"
+#include "scene.h"
 
 struct Resources {
     vk::raii::SurfaceKHR surface;
 
-    Buffer vertex_buffer;
-    Buffer index_buffer;
+    // Buffer vertex_buffer;
+    // Buffer index_buffer;
 
-    Buffer blas_buffer;
-    Buffer tlas_buffer;
+    // Buffer blas_buffer;
+    // Buffer tlas_buffer;
 
-    vk::raii::AccelerationStructureKHR blas;
-    vk::raii::AccelerationStructureKHR tlas;
+    // vk::raii::AccelerationStructureKHR blas;
+    // vk::raii::AccelerationStructureKHR tlas;
 
     Buffer sbt_buffer;
 
@@ -35,19 +35,19 @@ struct Resources {
 };
 
 class Renderer {
-    std::unique_ptr<Context> ctx;
+    Context& ctx;
+
     std::unique_ptr<Resources> res;
     std::unique_ptr<Encoder> encoder;
     std::unique_ptr<FrameManager> frame_mgr;
     std::unique_ptr<Swapchain> swapchain;
 
 public:
-    explicit Renderer(bool validation);
+    explicit Renderer(Context& ctx_);
 
-    void draw_frame(const Camera& camera);
+    void draw_frame(const Scene& scene);
     void recreate();
 
-    [[nodiscard]] Context& get_ctx() const;
     [[nodiscard]] Resources& get_res() const;
     [[nodiscard]] Encoder& get_encoder() const;
     [[nodiscard]] FrameManager& get_frame_mgr() const;

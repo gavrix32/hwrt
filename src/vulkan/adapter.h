@@ -9,5 +9,5 @@ class Adapter {
 
 public:
     explicit Adapter(const Instance& instance, const std::vector<const char*>& required_extensions);
-    [[nodiscard]] const vk::raii::PhysicalDevice& get() const;
+    [[nodiscard]] const vk::raii::PhysicalDevice& get() const { return handle; }
 };

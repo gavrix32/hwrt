@@ -9,11 +9,13 @@ class Device;
 
 class Buffer {
     vk::Buffer handle;
-    VmaAllocator allocator;
+    VmaAllocator allocator{};
     VmaAllocation allocation{};
     void* mapped_data = nullptr;
 
 public:
+    Buffer() = default;
+
     explicit Buffer(const Allocator& allocator,
                     vk::DeviceSize size,
                     vk::BufferUsageFlags usage,

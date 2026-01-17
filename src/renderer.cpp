@@ -7,414 +7,61 @@
 #include <iostream>
 #include <fstream>
 
-#include "camera.h"
-#include "window.h"
 #include "glm/gtc/type_ptr.hpp"
 #include "spdlog/spdlog.h"
+
 #include "vulkan/pipeline.h"
 #include "vulkan/utils.h"
+#include "camera.h"
+#include "window.h"
 
-struct Vertex {
-    std::array<float, 3> pos;
-    std::array<float, 3> color;
-};
-
-// struct Mesh {
-//     uint32_t first_index;
-//     uint32_t index_count;
-//     uint32_t vertex_offset;
-// };
+// Attributes:
+// NORMAL
+// POSITION
+// TANGENT
+// TEXCOORD_0
 
 // TODO: is it necessary?
 vk::Format srgb_to_unorm(const vk::Format format) {
     switch (format) {
-        case vk::Format::eR8Srgb: return vk::Format::eR8Unorm;
-        case vk::Format::eR8G8Srgb: return vk::Format::eR8G8Unorm;
-        case vk::Format::eR8G8B8Srgb: return vk::Format::eR8G8B8Unorm;
-        case vk::Format::eB8G8R8Srgb: return vk::Format::eB8G8R8Unorm;
-        case vk::Format::eR8G8B8A8Srgb: return vk::Format::eR8G8B8A8Unorm;
-        case vk::Format::eB8G8R8A8Srgb: return vk::Format::eB8G8R8A8Unorm;
-        default: return format;
+        case vk::Format::eR8Srgb:
+            return vk::Format::eR8Unorm;
+        case vk::Format::eR8G8Srgb:
+            return vk::Format::eR8G8Unorm;
+        case vk::Format::eR8G8B8Srgb:
+            return vk::Format::eR8G8B8Unorm;
+        case vk::Format::eB8G8R8Srgb:
+            return vk::Format::eB8G8R8Unorm;
+        case vk::Format::eR8G8B8A8Srgb:
+            return vk::Format::eR8G8B8A8Unorm;
+        case vk::Format::eB8G8R8A8Srgb:
+            return vk::Format::eB8G8R8A8Unorm;
+        default:
+            return format;
     }
 }
 
-void process_node(
-    const tinygltf::Model& model,
-    const int node_index,
-    const glm::mat4& parent_transform,
-    std::vector<Vertex>& vertices,
-    std::vector<uint32_t>& indices) {
-    const auto& node = model.nodes[node_index];
-
-    glm::mat4 local_transform;
-
-    if (node.matrix.size() == 16) {
-        local_transform = glm::make_mat4(node.matrix.data());
-    } else {
-        auto translation = glm::vec3(0.0f);
-        auto rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
-        auto scale = glm::vec3(1.0f);
-
-        if (node.translation.size() == 3) { translation = glm::make_vec3(node.translation.data()); }
-        if (node.rotation.size() == 4) { rotation = glm::make_quat(node.rotation.data()); }
-        if (node.scale.size() == 3) { scale = glm::make_vec3(node.scale.data()); }
-
-        local_transform = glm::translate(glm::mat4(1.0f), translation) *
-                          glm::mat4(rotation) *
-                          glm::scale(glm::mat4(1.0f), scale);
-    }
-
-    const glm::mat4 global_transform = parent_transform * local_transform;
-
-    if (node.mesh >= 0) {
-        const auto& mesh = model.meshes[node.mesh];
-        spdlog::info("    Processing mesh: {} in node {}", mesh.name, node.name);
-
-        for (const auto& primitive : mesh.primitives) {
-            if (primitive.indices < 0) {
-                spdlog::error("Non indexed geomtry in primitive");
-                continue;
-            }
-            const auto idx_accessor = model.accessors[primitive.indices];
-            const auto idx_buffer_view = model.bufferViews[idx_accessor.bufferView];
-            const auto idx_buffer = model.buffers[idx_buffer_view.buffer];
-
-            const unsigned char* idx_data_ptr = idx_buffer.data.data() + idx_buffer_view.byteOffset + idx_accessor.byteOffset;
-            const int idx_stride = idx_accessor.ByteStride(idx_buffer_view);
-
-            const auto index_count = idx_accessor.count;
-            indices.reserve(index_count);
-
-            for (auto i = 0; i < index_count; ++i) {
-                const unsigned char* index_ptr = idx_data_ptr + i * idx_stride;
-                uint32_t index = 0;
-
-                switch (idx_accessor.componentType) {
-                    case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE: index = static_cast<uint32_t>(*index_ptr);
-                        break;
-                    case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT
-                    : index = static_cast<uint32_t>(*reinterpret_cast<const uint16_t*>(index_ptr));
-                        break;
-                    case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT: index = *reinterpret_cast<const uint32_t*>(index_ptr);
-                        break;
-                    default: spdlog::critical("glTF unknown index component type: {}", idx_accessor.componentType);
-                }
-                indices.push_back(index + vertices.size());
-            }
-
-            const auto pos_accessor = model.accessors[primitive.attributes.at("POSITION")];
-            const auto pos_buffer_view = model.bufferViews[pos_accessor.bufferView];
-            const auto pos_buffer = model.buffers[pos_buffer_view.buffer];
-
-            const unsigned char* pos_data_ptr = pos_buffer.data.data() + pos_buffer_view.byteOffset + pos_accessor.byteOffset;
-            const int pos_stride = pos_accessor.ByteStride(pos_buffer_view);
-
-            for (auto i = 0; i < pos_accessor.count; ++i) {
-                const auto pos_ptr = reinterpret_cast<const float*>(pos_data_ptr + i * pos_stride);
-
-                const auto local_pos = glm::vec4(pos_ptr[0], pos_ptr[1], pos_ptr[2], 1.0f);
-                const auto world_pos = global_transform * local_pos;
-
-                Vertex vertex{};
-                vertex.pos = {world_pos.x, -world_pos.y, world_pos.z};
-                vertex.color = {1.0f, 1.0f, 1.0f};
-
-                vertices.push_back(vertex);
-            }
-        }
-    }
-    for (const int child_index : node.children) {
-        process_node(model, child_index, global_transform, vertices, indices);
-    }
-}
-
-void load_model(const std::string& filename,
-                std::vector<Vertex>& vertices,
-                std::vector<uint32_t>& indices) {
+Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
     SCOPED_TIMER();
-
-    tinygltf::Model model;
-    tinygltf::TinyGLTF loader;
-    std::string err;
-    std::string warn;
-
-    const bool ret = loader.LoadBinaryFromFile(&model, &err, &warn, filename);;
-
-    if (!warn.empty()) spdlog::warn("glTF warning: {}", warn);
-    if (!err.empty()) spdlog::error("glTF error: {}", err);
-    if (!ret) spdlog::critical("glTF failed to parse: {}", filename);
-
-    for (const auto& scene : model.scenes) {
-        spdlog::info("Processing scene: {}", scene.name);
-
-        for (const int node_index : scene.nodes) {
-            process_node(model, node_index, glm::mat4(1.0f), vertices, indices);
-        }
-    }
-    spdlog::info("{} faces", indices.size() / 3);
-}
-
-Renderer::Renderer(const bool validation) {
-    SCOPED_TIMER();
-
-    ctx = std::make_unique<Context>(validation);
 
     VkSurfaceKHR surface_;
-    if (glfwCreateWindowSurface(*ctx->get_instance().get(), Window::get(), nullptr, &surface_) != 0) {
+    if (glfwCreateWindowSurface(*ctx.get_instance().get(), Window::get(), nullptr, &surface_) != 0) {
         throw std::runtime_error("Failed to create window surface");
     }
-    auto surface = vk::raii::SurfaceKHR(ctx->get_instance().get(), surface_);
+    auto surface = vk::raii::SurfaceKHR(ctx.get_instance().get(), surface_);
 
-    swapchain = std::make_unique<Swapchain>(ctx->get_adapter(), ctx->get_device(), Window::get(), surface);
+    swapchain = std::make_unique<Swapchain>(ctx.get_adapter(), ctx.get_device(), Window::get(), surface);
 
-    auto adapter_props_chain = ctx->get_adapter().get().getProperties2<
+    auto rt_pipeline_props = ctx.get_adapter().get().getProperties2<
         vk::PhysicalDeviceProperties2,
-        vk::PhysicalDeviceRayTracingPipelinePropertiesKHR,
-        vk::PhysicalDeviceAccelerationStructurePropertiesKHR
-    >();
+        vk::PhysicalDeviceRayTracingPipelinePropertiesKHR
+    >().get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
 
-    auto rt_pipeline_props = adapter_props_chain.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
-    auto as_props = adapter_props_chain.get<vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
-
-    // std::vector<Vertex> vertices = {
-    //     {{0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
-    //     {{0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
-    //     {{-0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},
-    // };
-    //
-    // std::vector<uint32_t> indices = {
-    //     0, 1, 2,
-    // };
-
-    spdlog::info("Loading model...");
-
-    std::vector<Vertex> vertices;
-    std::vector<uint32_t> indices;
-
-    load_model("../assets/models/ABeautifulGame.glb", vertices, indices);
-
-    auto vertex_buffer = BufferBuilder()
-                         .size(sizeof(Vertex) * vertices.size())
-                         .usage(vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eStorageBuffer |
-                                vk::BufferUsageFlagBits::eShaderDeviceAddress |
-                                vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR)
-                         .allocation_flags(
-                             VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT)
-                         .build(ctx->get_allocator());
-
-    memcpy(vertex_buffer.mapped_ptr(), vertices.data(), sizeof(Vertex) * vertices.size());
-
-    auto index_buffer = BufferBuilder()
-                        .size(sizeof(uint32_t) * indices.size())
-                        .usage(vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eStorageBuffer |
-                               vk::BufferUsageFlagBits::eShaderDeviceAddress |
-                               vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR)
-                        .allocation_flags(
-                            VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT)
-                        .build(ctx->get_allocator());
-
-    memcpy(index_buffer.mapped_ptr(), indices.data(), sizeof(u_int32_t) * indices.size());
-
-    auto vertex_address = vertex_buffer.get_device_address(ctx->get_device());
-    auto index_address = index_buffer.get_device_address(ctx->get_device());
-
-    // Create Bottom Level Acceleration Structure
-
-    auto triangle_count = static_cast<uint32_t>(indices.size() / 3);
-
-    vk::AccelerationStructureGeometryTrianglesDataKHR blas_geometry_triangles_data{
-        .vertexFormat = vk::Format::eR32G32B32Sfloat,
-        .vertexData = vertex_address,
-        .vertexStride = sizeof(Vertex),
-        .maxVertex = static_cast<uint32_t>(vertices.size() - 1),
-        .indexType = vk::IndexType::eUint32,
-        .indexData = index_address,
-    };
-
-    vk::AccelerationStructureGeometryKHR blas_geometry{
-        .geometryType = vk::GeometryTypeKHR::eTriangles,
-        .geometry = blas_geometry_triangles_data,
-        .flags = vk::GeometryFlagBitsKHR::eOpaque,
-    };
-
-    vk::AccelerationStructureBuildRangeInfoKHR blas_build_range_info{
-        .primitiveCount = triangle_count,
-        .primitiveOffset = 0,
-        .firstVertex = 0,
-        .transformOffset = 0,
-    };
-
-    vk::AccelerationStructureBuildGeometryInfoKHR blas_build_geometry_info{
-        .type = vk::AccelerationStructureTypeKHR::eBottomLevel,
-        .mode = vk::BuildAccelerationStructureModeKHR::eBuild,
-        .geometryCount = 1,
-        .pGeometries = &blas_geometry,
-    };
-
-    std::vector<uint32_t> blas_max_primitive_counts(1);
-    blas_max_primitive_counts[0] = blas_build_range_info.primitiveCount;
-
-    auto blas_build_sizes_info = ctx->get_device().get().getAccelerationStructureBuildSizesKHR(
-        vk::AccelerationStructureBuildTypeKHR::eDevice,
-        blas_build_geometry_info,
-        blas_max_primitive_counts);
-
-    auto blas_buffer = BufferBuilder()
-                       .size(blas_build_sizes_info.accelerationStructureSize)
-                       .usage(
-                           vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR |
-                           vk::BufferUsageFlagBits::eShaderDeviceAddress)
-                       .build(ctx->get_allocator());
-
-    vk::AccelerationStructureCreateInfoKHR blas_create_info{
-        .buffer = blas_buffer.get(),
-        .size = blas_build_sizes_info.accelerationStructureSize,
-        .type = vk::AccelerationStructureTypeKHR::eBottomLevel,
-    };
-
-    auto single_time_encoder = SingleTimeEncoder(ctx->get_device());
-
-    auto blas = ctx->get_device().get().createAccelerationStructureKHR(blas_create_info);
-
-    // Build Bottom Level Acceleration Structure
-
-    auto scratch_alignment = as_props.minAccelerationStructureScratchOffsetAlignment;
-
-    auto blas_scratch_buffer = BufferBuilder()
-                               .size(blas_build_sizes_info.buildScratchSize)
-                               .usage(
-                                   vk::BufferUsageFlagBits::eStorageBuffer |
-                                   vk::BufferUsageFlagBits::eShaderDeviceAddress)
-                               .min_alignment(scratch_alignment)
-                               .build(ctx->get_allocator());
-
-    auto blas_scratch_buffer_device_address = blas_scratch_buffer.get_device_address(ctx->get_device());
-
-    blas_build_geometry_info.dstAccelerationStructure = blas;
-    blas_build_geometry_info.scratchData = blas_scratch_buffer_device_address;
-
-    single_time_encoder.get_cmd().buildAccelerationStructuresKHR({blas_build_geometry_info}, {&blas_build_range_info});
-
-    vk::MemoryBarrier2 as_build_barrier{
-        .srcStageMask = vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
-        .srcAccessMask = vk::AccessFlagBits2::eAccelerationStructureWriteKHR,
-        .dstStageMask = vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
-        .dstAccessMask = vk::AccessFlagBits2::eAccelerationStructureReadKHR,
-    };
-
-    vk::DependencyInfo dependency_info_as_build{
-        .memoryBarrierCount = 1,
-        .pMemoryBarriers = &as_build_barrier,
-    };
-
-    single_time_encoder.get_cmd().pipelineBarrier2(dependency_info_as_build);
-
-    // Create Top Level Acceleration Structure
-
-    vk::AccelerationStructureDeviceAddressInfoKHR blas_device_address_info{
-        .accelerationStructure = blas
-    };
-    auto blas_device_address = ctx->get_device().get().getAccelerationStructureAddressKHR(blas_device_address_info);
-
-    vk::TransformMatrixKHR transform{
-        std::array<std::array<float, 4>, 3>{
-            {
-                {{1.f, 0.f, 0.f, 0.f}},
-                {{0.f, 1.f, 0.f, 0.f}},
-                {{0.f, 0.f, 1.f, 0.f}},
-            }
-        }
-    };
-
-    vk::AccelerationStructureInstanceKHR blas_instance{
-        .transform = transform,
-        .instanceCustomIndex = 0,
-        .mask = 0xFF,
-        .instanceShaderBindingTableRecordOffset = 0,
-        .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
-        .accelerationStructureReference = blas_device_address
-    };
-
-    auto blas_instance_buffer = BufferBuilder()
-                                .size(sizeof(vk::AccelerationStructureInstanceKHR))
-                                .usage(
-                                    vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR |
-                                    vk::BufferUsageFlagBits::eShaderDeviceAddress)
-                                .allocation_flags(VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                                                  VMA_ALLOCATION_CREATE_MAPPED_BIT)
-                                .build(ctx->get_allocator());
-
-    memcpy(blas_instance_buffer.mapped_ptr(), &blas_instance, sizeof(vk::AccelerationStructureInstanceKHR));
-
-    auto blas_instance_device_address = blas_instance_buffer.get_device_address(ctx->get_device());
-
-    vk::AccelerationStructureGeometryInstancesDataKHR tlas_geometry_instances_data{
-        .arrayOfPointers = vk::False,
-        .data = blas_instance_device_address,
-    };
-
-    vk::AccelerationStructureGeometryKHR tlas_geometry{
-        .geometryType = vk::GeometryTypeKHR::eInstances,
-        .geometry = tlas_geometry_instances_data,
-        .flags = vk::GeometryFlagBitsKHR::eOpaque,
-    };
-
-    vk::AccelerationStructureBuildRangeInfoKHR tlas_build_range_info{
-        .primitiveCount = 1,
-        .primitiveOffset = 0,
-        .firstVertex = 0,
-        .transformOffset = 0,
-    };
-
-    vk::AccelerationStructureBuildGeometryInfoKHR tlas_build_geometry_info{
-        .type = vk::AccelerationStructureTypeKHR::eTopLevel,
-        .mode = vk::BuildAccelerationStructureModeKHR::eBuild,
-        .geometryCount = 1,
-        .pGeometries = &tlas_geometry,
-    };
-
-    std::vector<uint32_t> tlas_max_primitive_counts(1);
-    tlas_max_primitive_counts[0] = tlas_build_range_info.primitiveCount;
-
-    auto tlas_build_sizes_info = ctx->get_device().get().getAccelerationStructureBuildSizesKHR(
-        vk::AccelerationStructureBuildTypeKHR::eDevice,
-        tlas_build_geometry_info,
-        tlas_max_primitive_counts);
-
-    auto tlas_buffer = BufferBuilder()
-                       .size(tlas_build_sizes_info.accelerationStructureSize)
-                       .usage(
-                           vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR)
-                       .build(ctx->get_allocator());
-
-    vk::AccelerationStructureCreateInfoKHR tlas_create_info{
-        .buffer = tlas_buffer.get(),
-        .size = tlas_build_sizes_info.accelerationStructureSize,
-        .type = vk::AccelerationStructureTypeKHR::eTopLevel,
-    };
-
-    auto tlas = ctx->get_device().get().createAccelerationStructureKHR(tlas_create_info);
-
-    // Build Top Level Acceleration Structure
-
-    auto tlas_scratch_buffer = BufferBuilder()
-                               .size(tlas_build_sizes_info.buildScratchSize)
-                               .usage(
-                                   vk::BufferUsageFlagBits::eStorageBuffer |
-                                   vk::BufferUsageFlagBits::eShaderDeviceAddress)
-                               .min_alignment(scratch_alignment)
-                               .build(ctx->get_allocator());
-
-    auto tlas_scratch_buffer_device_address = tlas_scratch_buffer.get_device_address(ctx->get_device());
-
-    tlas_build_geometry_info.dstAccelerationStructure = *tlas;
-    tlas_build_geometry_info.scratchData = tlas_scratch_buffer_device_address;
-
-    single_time_encoder.get_cmd().buildAccelerationStructuresKHR({tlas_build_geometry_info}, {&tlas_build_range_info});
+    auto single_time_encoder = SingleTimeEncoder(ctx.get_device());
 
     // Ray Trace Image
 
-    auto queue_family_index_u32 = ctx->get_device().get_queue_family_index();
+    auto queue_family_index_u32 = ctx.get_device().get_queue_family_index();
 
     vk::ImageCreateInfo rt_image_create_info{
         .imageType = vk::ImageType::e2D,
@@ -431,7 +78,7 @@ Renderer::Renderer(const bool validation) {
         .initialLayout = vk::ImageLayout::eUndefined,
     };
 
-    auto rt_image = Image(rt_image_create_info, ctx->get_allocator());
+    auto rt_image = Image(rt_image_create_info, ctx.get_allocator());
 
     vk::ImageViewCreateInfo rt_image_view_create_info{
         .image = rt_image.get(),
@@ -439,14 +86,14 @@ Renderer::Renderer(const bool validation) {
         .format = srgb_to_unorm(swapchain->get_surface_format().format),
         .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
     };
-    auto rt_image_view = ctx->get_device().get().createImageView(rt_image_view_create_info);
+    auto rt_image_view = ctx.get_device().get().createImageView(rt_image_view_create_info);
 
     rt_image.transition_layout(single_time_encoder.get_cmd(),
                                vk::ImageLayout::eGeneral,
                                vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
                                vk::AccessFlagBits2::eShaderWrite);
 
-    single_time_encoder.submit(ctx->get_device());
+    single_time_encoder.submit(ctx.get_device());
 
     // Push Descriptors & Pipeline Layout
 
@@ -482,7 +129,7 @@ Renderer::Renderer(const bool validation) {
         .pBindings = bindings.data(),
     };
 
-    auto descriptor_set_layout = ctx->get_device().get().createDescriptorSetLayout(descriptor_set_layout_create_info);
+    auto descriptor_set_layout = ctx.get_device().get().createDescriptorSetLayout(descriptor_set_layout_create_info);
 
     // Ray Tracing Pipeline
 
@@ -492,7 +139,7 @@ Renderer::Renderer(const bool validation) {
                        .rchit("../src/shaders/spirv/raytrace.rchit.spv")
                        .ray_depth(1)
                        .descriptor_set_layout(descriptor_set_layout)
-                       .build(ctx->get_device());
+                       .build(ctx.get_device());
 
     // Shader Binding Table
 
@@ -536,10 +183,10 @@ Renderer::Renderer(const bool validation) {
                           vk::BufferUsageFlagBits::eShaderDeviceAddress |
                           vk::BufferUsageFlagBits::eShaderBindingTableKHR)
                       .allocation_flags(VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT)
-                      .build(ctx->get_allocator());
+                      .build(ctx.get_allocator());
 
     {
-        auto sbt_address = sbt_buffer.get_device_address(ctx->get_device());
+        auto sbt_address = sbt_buffer.get_device_address(ctx.get_device());
 
         auto* p_data = sbt_buffer.mapped_ptr<uint8_t>();
 
@@ -561,19 +208,13 @@ Renderer::Renderer(const bool validation) {
 
     constexpr int frames_in_flight = 2;
 
-    encoder = std::make_unique<Encoder>(ctx->get_device(), frames_in_flight);
-    frame_mgr = std::make_unique<FrameManager>(*ctx, frames_in_flight, swapchain->get_images().size());
+    encoder = std::make_unique<Encoder>(ctx.get_device(), frames_in_flight);
+    frame_mgr = std::make_unique<FrameManager>(ctx, frames_in_flight, swapchain->get_images().size());
 
-    ctx->get_device().get_queue().waitIdle();
+    ctx.get_device().get_queue().waitIdle();
 
     res = std::make_unique<Resources>(Resources{
         .surface = std::move(surface),
-        .vertex_buffer = std::move(vertex_buffer),
-        .index_buffer = std::move(index_buffer),
-        .blas_buffer = std::move(blas_buffer),
-        .tlas_buffer = std::move(tlas_buffer),
-        .blas = std::move(blas),
-        .tlas = std::move(tlas),
         .sbt_buffer = std::move(sbt_buffer),
         .rgen_region = rgen_region,
         .rmiss_region = rmiss_region,
@@ -585,10 +226,10 @@ Renderer::Renderer(const bool validation) {
     });
 }
 
-void Renderer::draw_frame(const Camera& camera) {
-    (void) ctx->get_device().get().waitForFences({frame_mgr->get_in_flight_fence()},
-                                                 vk::True,
-                                                 std::numeric_limits<uint64_t>::max());
+void Renderer::draw_frame(const Scene& scene) {
+    (void) ctx.get_device().get().waitForFences({frame_mgr->get_in_flight_fence()},
+                                                vk::True,
+                                                std::numeric_limits<uint64_t>::max());
 
     vk::AcquireNextImageInfoKHR acquire_info{
         .swapchain = swapchain->get(),
@@ -596,16 +237,16 @@ void Renderer::draw_frame(const Camera& camera) {
         .semaphore = frame_mgr->get_image_available_semaphore(),
         .deviceMask = 1,
     };
-    auto acquire_result = ctx->get_device().get().acquireNextImage2KHR(acquire_info);
+    auto acquire_result = ctx.get_device().get().acquireNextImage2KHR(acquire_info);
 
     if (acquire_result.result == vk::Result::eErrorOutOfDateKHR ||
         acquire_result.result == vk::Result::eSuboptimalKHR) {
         recreate();
-        frame_mgr->recreate_image_available_semaphores(ctx->get_device());
+        frame_mgr->recreate_image_available_semaphores(ctx.get_device());
         return;
     }
 
-    ctx->get_device().get().resetFences({frame_mgr->get_in_flight_fence()});
+    ctx.get_device().get().resetFences({frame_mgr->get_in_flight_fence()});
 
     uint32_t image_index = acquire_result.value;
 
@@ -614,7 +255,7 @@ void Renderer::draw_frame(const Camera& camera) {
 
     vk::WriteDescriptorSetAccelerationStructureKHR write_as_info{
         .accelerationStructureCount = 1,
-        .pAccelerationStructures = &*res->tlas,
+        .pAccelerationStructures = &*scene.get_tlas().get_handle(),
     };
 
     vk::WriteDescriptorSet write_as{
@@ -636,6 +277,7 @@ void Renderer::draw_frame(const Camera& camera) {
         .pImageInfo = &descriptor_image_info,
     };
 
+    auto camera = scene.get_camera();
     auto uniform = Uniform{
         .inv_view = glm::inverse(camera.get_view()),
         .inv_proj = glm::inverse(camera.get_proj()),
@@ -718,7 +360,7 @@ void Renderer::draw_frame(const Camera& camera) {
         .pSignalSemaphores = &*frame_mgr->get_render_finished_semaphore(image_index),
     };
 
-    ctx->get_device().get_queue().submit(submit_info, frame_mgr->get_in_flight_fence());
+    ctx.get_device().get_queue().submit(submit_info, frame_mgr->get_in_flight_fence());
 
     vk::PresentInfoKHR present_info{
         .waitSemaphoreCount = 1,
@@ -728,7 +370,7 @@ void Renderer::draw_frame(const Camera& camera) {
         .pImageIndices = &image_index,
     };
 
-    if (auto result = ctx->get_device().get_queue().presentKHR(present_info);
+    if (auto result = ctx.get_device().get_queue().presentKHR(present_info);
         result == vk::Result::eSuboptimalKHR ||
         result == vk::Result::eErrorOutOfDateKHR
     ) {
@@ -740,11 +382,11 @@ void Renderer::draw_frame(const Camera& camera) {
 void Renderer::recreate() {
     SCOPED_TIMER();
 
-    ctx->get_device().get().waitIdle();
+    ctx.get_device().get().waitIdle();
 
-    swapchain = std::make_unique<Swapchain>(ctx->get_adapter(), ctx->get_device(), Window::get(), res->surface);
+    swapchain = std::make_unique<Swapchain>(ctx.get_adapter(), ctx.get_device(), Window::get(), res->surface);
 
-    auto queue_family_index_u32 = ctx->get_device().get_queue_family_index();
+    auto queue_family_index_u32 = ctx.get_device().get_queue_family_index();
 
     const vk::ImageCreateInfo rt_image_create_info{
         .imageType = vk::ImageType::e2D,
@@ -761,16 +403,16 @@ void Renderer::recreate() {
         .initialLayout = vk::ImageLayout::eUndefined,
     };
 
-    res->rt_image = Image(rt_image_create_info, ctx->get_allocator());
+    res->rt_image = Image(rt_image_create_info, ctx.get_allocator());
 
-    const auto single_time_encoder = SingleTimeEncoder(ctx->get_device());
+    const auto single_time_encoder = SingleTimeEncoder(ctx.get_device());
 
     res->rt_image.transition_layout(single_time_encoder.get_cmd(),
                                     vk::ImageLayout::eGeneral,
                                     vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
                                     vk::AccessFlagBits2::eShaderWrite);
 
-    single_time_encoder.submit(ctx->get_device());
+    single_time_encoder.submit(ctx.get_device());
 
     const vk::ImageViewCreateInfo rt_image_view_create_info{
         .image = res->rt_image.get(),
@@ -778,11 +420,7 @@ void Renderer::recreate() {
         .format = srgb_to_unorm(swapchain->get_surface_format().format),
         .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
     };
-    res->rt_image_view = ctx->get_device().get().createImageView(rt_image_view_create_info);
-}
-
-Context& Renderer::get_ctx() const {
-    return *ctx;
+    res->rt_image_view = ctx.get_device().get().createImageView(rt_image_view_create_info);
 }
 
 Resources& Renderer::get_res() const {
