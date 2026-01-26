@@ -3,7 +3,6 @@
 #include "allocator.h"
 #include "buffer.h"
 #include "device.h"
-#include "utils.h"
 
 Buffer::Buffer(const Allocator& allocator,
                const vk::DeviceSize size,
@@ -12,8 +11,6 @@ Buffer::Buffer(const Allocator& allocator,
                const VmaAllocationCreateFlags allocation_flags,
                const uint32_t min_alignment)
     : allocator(allocator.get()) {
-    SCOPED_TIMER();
-
     const vk::BufferCreateInfo buffer_create_info = {
         .size = size,
         .usage = usage,

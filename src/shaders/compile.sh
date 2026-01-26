@@ -1,6 +1,7 @@
 #!/bin/bash
 
 SHADER_DIR="$(cd "$(dirname "$0")" && pwd)/slang"
+COMMON_FILE="$SHADER_DIR/common.slang"
 OUTPUT_DIR="$SHADER_DIR/../spirv"
 
 mkdir -p "$OUTPUT_DIR"
@@ -11,7 +12,7 @@ for SHADER in raytrace.rgen raytrace.rmiss raytrace.rchit; do
     SRC="$SHADER_DIR/$SHADER.slang"
     DST="$OUTPUT_DIR/$SHADER.spv"
 
-    if [[ ! -f "$DST" || "$SRC" -nt "$DST" ]]; then
+    if [[ ! -f "$DST" || "$SRC" -nt "$DST" || "$COMMON_FILE" -nt "$DST" ]]; then
         echo "- $SHADER"
         slangc -I "$SHADER_DIR" "$SRC" -target spirv -profile spirv_1_6 -matrix-layout-column-major -capability spvShaderClockKHR -o "$DST"
 

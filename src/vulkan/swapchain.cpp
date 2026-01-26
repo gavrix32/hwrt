@@ -46,8 +46,6 @@ vk::PresentModeKHR choose_present_mode(const std::vector<vk::PresentModeKHR>& av
 Swapchain::Swapchain(const Adapter& adapter, const Device& device,
                      GLFWwindow* window, const vk::SurfaceKHR& surface)
     : handle(nullptr) {
-    SCOPED_TIMER();
-
     const auto surface_capabilities = adapter.get().getSurfaceCapabilitiesKHR(surface);
 
     extent = choose_extent(window, surface_capabilities);

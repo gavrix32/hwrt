@@ -14,6 +14,19 @@ vk::TransformMatrixKHR vk_matrix(const glm::mat4& m) {
 void Scene::build_tlas(const Context& ctx) {
     std::vector<vk::AccelerationStructureInstanceKHR> instances;
 
+    // TODO: to func
+    // const Buffer gpu_meshes_buffer = BufferBuilder()
+    //                                  .size(sizeof(GpuMesh) * gpu_meshes.size())
+    //                                  .usage(
+    //                                      vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress)
+    //                                  .allocation_flags(
+    //                                      VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+    //                                      VMA_ALLOCATION_CREATE_MAPPED_BIT)
+    //                                  .build(ctx.get_allocator());
+    //
+    // memcpy(gpu_meshes_buffer.mapped_ptr(), gpu_meshes.data(), sizeof(GpuMesh) * gpu_meshes.size());
+    // gpu_meshes_address = gpu_meshes_buffer.get_device_address(ctx.get_device());
+
     for (const auto& model_instance : model_instances) {
         for (const auto& mesh_instance : model_instance.model.mesh_instances) {
             const auto& blas = model_instance.model.blases[mesh_instance.mesh_index];

@@ -1,4 +1,6 @@
+import common;
+
 [shader("miss")]
-void main(inout float3 color) {
-    color = float3(0.3, 0.6, 1.0);
+void main(inout Payload payload) {
+    payload.color = float3(0.3, 0.6, 1.0);
 }

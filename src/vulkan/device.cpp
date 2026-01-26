@@ -2,11 +2,9 @@
 
 #include "adapter.h"
 #include "device.h"
-#include "utils.h"
 
 Device::Device(const Adapter& adapter, const std::vector<const char*>& required_extensions) : handle(nullptr),
     queue(nullptr), queue_family_index(0) {
-    SCOPED_TIMER();
 
     auto queue_family_properties = adapter.get().getQueueFamilyProperties();
 

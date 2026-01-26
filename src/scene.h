@@ -3,8 +3,6 @@
 #include "camera.h"
 #include "model.h"
 
-// TODO: Instancing
-
 struct ModelInstance {
     Model& model;
     glm::mat4 transform;

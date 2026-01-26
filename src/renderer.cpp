@@ -2,8 +2,6 @@
 
 #include <GLFW/glfw3.h>
 
-#include <tiny_gltf.h>
-
 #include <iostream>
 #include <fstream>
 
@@ -15,11 +13,14 @@
 #include "camera.h"
 #include "window.h"
 
-// Attributes:
-// NORMAL
-// POSITION
-// TANGENT
-// TEXCOORD_0
+// Передать адреса через push constants
+// Задать instanceCustomIndex в TLAS
+// textures[NonUniformResourceIndex(materialID)];
+// ObjectToWorld3x4();
+
+struct PushConstants {
+    vk::DeviceAddress gpu_mesh_address;
+};
 
 // TODO: is it necessary?
 vk::Format srgb_to_unorm(const vk::Format format) {
@@ -131,6 +132,12 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
 
     auto descriptor_set_layout = ctx.get_device().get().createDescriptorSetLayout(descriptor_set_layout_create_info);
 
+    // vk::PushConstantRange push_constant_range{
+    //     .stageFlags = vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR,
+    //     .offset = 0,
+    //     .size = sizeof(PushConstants)
+    // };
+
     // Ray Tracing Pipeline
 
     auto rt_pipeline = PipelineBuilder()
@@ -139,6 +146,7 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
                        .rchit("../src/shaders/spirv/raytrace.rchit.spv")
                        .ray_depth(1)
                        .descriptor_set_layout(descriptor_set_layout)
+                       // .push_constant_range(push_constant_range)
                        .build(ctx.get_device());
 
     // Shader Binding Table
@@ -300,8 +308,21 @@ void Renderer::draw_frame(const Scene& scene) {
 
     std::vector writes{write_as, write_image, write_uniform};
 
+    // PushConstants push_constants{
+    //     .gpu_mesh_address = scene.
+    // };
+    //
+    // vk::PushConstantsInfo push_constants_info{
+    //     .layout = res->rt_pipeline.get_layout(),
+    //     .stageFlags = vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR,
+    //     .offset = 0,
+    //     .size = sizeof(PushConstants),
+    //     .pValues = &push_constants
+    // };
+
     cmd.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, res->rt_pipeline.get());
     cmd.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, res->rt_pipeline.get_layout(), 0, writes);
+    // cmd.pushConstants2(push_constants_info);
 
     cmd.traceRaysKHR(res->rgen_region,
                      res->rmiss_region,

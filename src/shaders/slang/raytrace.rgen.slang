@@ -1,3 +1,5 @@
+import common;
+
 [[vk::binding(0, 0)]]
 RaytracingAccelerationStructure tlas;
 
@@ -53,16 +55,17 @@ void main() {
     ray.TMin = 0.001;
     ray.TMax = 10000.0;
 
-    float3 color = float3(0.0, 0.0, 0.0);
+    Payload payload;
+    payload.color = float3(0.0, 0.0, 0.0);
 
     uint64_t start = clockARB();
-    TraceRay(tlas, RAY_FLAG_FORCE_OPAQUE, 0xFF, 0, 0, 0, ray, color);
+    TraceRay(tlas, RAY_FLAG_FORCE_OPAQUE, 0xFF, 0, 0, 0, ray, payload);
     uint64_t end = clockARB();
 
     float diff = 0.0;
     diff = float(end - start);
 
-    //color = inferno_quintic(diff, float2(10000.0, 1000000.0));
+    //payload.color = inferno_quintic(diff, float2(10000.0, 1000000.0));
 
-    out_image[int2(launch_id)] = float4(color, 1.0);
+    out_image[int2(launch_id)] = float4(payload.color, 1.0);
 }

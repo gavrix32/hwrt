@@ -4,7 +4,6 @@
 
 #include "instance.h"
 #include "adapter.h"
-#include "utils.h"
 
 std::string_view get_physical_device_type_name(const vk::PhysicalDeviceType type) {
     switch (type) {
@@ -22,8 +21,6 @@ std::string_view get_physical_device_type_name(const vk::PhysicalDeviceType type
 }
 
 Adapter::Adapter(const Instance& instance, const std::vector<const char*>& required_extensions) : handle(nullptr) {
-    SCOPED_TIMER();
-
     const auto physical_devices = instance.get().enumeratePhysicalDevices();
     if (physical_devices.empty()) {
         throw std::runtime_error("Failed to find GPUs with Vulkan support!");

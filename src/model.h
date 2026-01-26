@@ -28,6 +28,13 @@ struct MeshInstance {
     glm::mat4 transform;
 };
 
+struct alignas(8) GpuMesh {
+    uint64_t vertex_address;
+    uint64_t index_address;
+    uint32_t first_index;
+    uint32_t material_index;
+};
+
 class Model {
     Buffer vertex_buffer;
     Buffer index_buffer;
@@ -46,6 +53,10 @@ class Model {
 public:
     std::vector<AccelerationStructure> blases;
     std::vector<MeshInstance> mesh_instances;
+    std::vector<GpuMesh> gpu_meshes;
+
+    vk::DeviceAddress vertex_address;
+    vk::DeviceAddress index_address;
 
     explicit Model(const Context& ctx, const tinygltf::Model& gltf_model);
 };

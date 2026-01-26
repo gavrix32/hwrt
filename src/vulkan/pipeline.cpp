@@ -12,8 +12,6 @@ Pipeline::Pipeline(const std::vector<vk::PipelineShaderStageCreateInfo>& stage_i
                    const uint32_t stage_count,
                    const Device& device)
     : handle(nullptr), layout(nullptr), group_count_(group_count), stage_count_(stage_count) {
-    SCOPED_TIMER();
-
     layout = device.get().createPipelineLayout(layout_info);
 
     const vk::RayTracingPipelineCreateInfoKHR create_info{
@@ -118,7 +116,7 @@ std::vector<char> read_file(const std::string& filename) {
 Pipeline PipelineBuilder::build(const Device& device) const {
     std::vector<vk::raii::ShaderModule> modules;
 
-    for (auto filename : shader_filenames) {
+    for (const auto& filename : shader_filenames) {
         auto code = read_file(filename);
 
         vk::ShaderModuleCreateInfo module_info{

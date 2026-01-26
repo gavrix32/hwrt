@@ -1,9 +1,7 @@
 #include <GLFW/glfw3.h>
-
 #include <spdlog/spdlog.h>
 
 #include "instance.h"
-#include "utils.h"
 
 static spdlog::level::level_enum to_spdlog_level(const vk::DebugUtilsMessageSeverityFlagBitsEXT severity) {
     switch (severity) {
@@ -47,8 +45,6 @@ vk::raii::DebugUtilsMessengerEXT setup_debug_messenger(const vk::raii::Instance&
 }
 
 Instance::Instance(const bool validation) : vk_instance(nullptr), vk_debug_messenger(nullptr) {
-    SCOPED_TIMER();
-
     const std::vector validation_layers = {
         "VK_LAYER_KHRONOS_validation"
     };

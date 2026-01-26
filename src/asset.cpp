@@ -8,14 +8,13 @@ AssetLoader::AssetLoader(const Context& ctx) : ctx_(ctx) {
 }
 
 Model AssetLoader::load_model(const std::string& filename) const {
-    SCOPED_TIMER();
+    spdlog::info("Loading glTF model...");
 
     tinygltf::Model gltf_model;
     tinygltf::TinyGLTF gltf_loader;
     std::string err;
     std::string warn;
 
-    spdlog::info("glTF loading model...");
     const bool ret = gltf_loader.LoadBinaryFromFile(&gltf_model, &err, &warn, filename);
 
     if (!warn.empty()) spdlog::warn("glTF warning: {}", warn);

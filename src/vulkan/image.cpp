@@ -5,8 +5,6 @@
 
 Image::Image(vk::ImageCreateInfo create_info, const Allocator& allocator,
              const VmaAllocationCreateFlags allocation_create_flags) : vma_allocator(allocator.get()) {
-    SCOPED_TIMER();
-
     const VmaAllocationCreateInfo allocation_create_info = {
         .flags = allocation_create_flags,
         .usage = VMA_MEMORY_USAGE_AUTO,
@@ -67,7 +65,7 @@ Image& Image::operator=(Image&& other) noexcept {
 
 void Image::transition_layout(const vk::raii::CommandBuffer& cmd, const vk::ImageLayout new_layout,
                               const vk::PipelineStageFlags2 new_stage_mask, const vk::AccessFlags2 new_access_mask) {
-    // SCOPED_TIMER_NAMED("Transition layout image ({} -> {})", vk::to_string(layout), vk::to_string(new_layout));
+    // SCOPED_TIMER_MSG("Transition layout image ({} -> {})", vk::to_string(layout), vk::to_string(new_layout));
 
     vk::ImageMemoryBarrier2 barrier{
         .srcStageMask = stage_mask,

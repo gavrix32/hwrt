@@ -12,6 +12,10 @@
 #define HEIGHT 720
 
 // TODO: Abstractions (sbt, image, view, imgui)
+// TODO: Model instancing
+// TODO: Normal logging without macro
+// TODO: Shader hot reloading
+// TODO: Meshoptimizer?
 
 #ifdef NDEBUG
 constexpr bool validation = false;
@@ -38,7 +42,7 @@ int main() {
         Context ctx(validation);
         AssetLoader asset(ctx);
 
-        auto model = asset.load_model("../assets/models/ABeautifulGame.glb");
+        auto model = asset.load_model("../assets/models/sponza.glb");
 
         auto camera = Camera();
         camera.set_pos(glm::vec3(0.0f, 0.0f, 1.0f));
