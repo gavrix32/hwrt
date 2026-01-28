@@ -1,13 +1,8 @@
 #include "model.h"
 
-#include <ranges>
-
-#include "context.h"
 #include "glm/gtc/type_ptr.hpp"
 #include "spdlog/spdlog.h"
 #include "vulkan/buffer.h"
-#include "vulkan/encoder.h"
-#include "vulkan/utils.h"
 
 struct AttributeData {
     const uint8_t* p_data = nullptr;
@@ -31,14 +26,10 @@ AttributeData get_attribute_data(const tinygltf::Model& model, const tinygltf::P
     };
 }
 
-void process_mesh(const tinygltf::Model& gltf_model,
-                  const tinygltf::Mesh& gltf_mesh,
-                  std::vector<Vertex>& vertices,
-                  std::vector<uint32_t>& indices,
-                  std::vector<Mesh>& meshes) {
+void Model::process_mesh(const tinygltf::Model& gltf_model, const tinygltf::Mesh& gltf_mesh) {
     Mesh mesh{};
 
-    mesh.first_index = indices.size();
+    mesh.index_offset = indices.size();
     mesh.vertex_offset = vertices.size();
 
     for (const auto& primitive : gltf_mesh.primitives) {
@@ -106,7 +97,8 @@ void process_mesh(const tinygltf::Model& gltf_model,
             vertices.emplace_back(v);
         }
     }
-    mesh.index_count = indices.size() - mesh.first_index;
+    mesh.index_count = indices.size() - mesh.index_offset;
+    mesh.vertex_count = vertices.size() - mesh.vertex_offset;
     meshes.emplace_back(mesh);
 }
 
@@ -141,127 +133,9 @@ void Model::process_node(const tinygltf::Model& gltf_model, const int node_index
     }
 }
 
-void Model::create_vertex_buffer(const Allocator& allocator, const uint32_t vertex_count) {
-    vertex_buffer = BufferBuilder()
-                    .size(sizeof(Vertex) * vertex_count)
-                    .usage(vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eStorageBuffer |
-                           vk::BufferUsageFlagBits::eShaderDeviceAddress |
-                           vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR)
-                    .allocation_flags(
-                        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT)
-                    .build(allocator);
-}
-
-void Model::create_index_buffer(const Allocator& allocator, const uint32_t index_count) {
-    index_buffer = BufferBuilder()
-                   .size(sizeof(uint32_t) * index_count)
-                   .usage(vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eStorageBuffer |
-                          vk::BufferUsageFlagBits::eShaderDeviceAddress |
-                          vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR)
-                   .allocation_flags(
-                       VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT)
-                   .build(allocator);
-}
-
-void Model::build_blases(const Context& ctx,
-                         vk::DeviceAddress vertex_address,
-                         vk::DeviceAddress index_address,
-                         std::vector<Mesh>& meshes,
-                         uint32_t max_vertex) {
-    SCOPED_TIMER();
-
-    auto as_props = ctx.get_adapter().get().getProperties2<
-        vk::PhysicalDeviceProperties2,
-        vk::PhysicalDeviceAccelerationStructurePropertiesKHR
-    >().get<vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
-
-    auto single_time_encoder = SingleTimeEncoder(ctx.get_device());
-
-    std::vector<Buffer> scratch_buffers;
-
-    for (const auto& mesh : meshes) {
-        vk::AccelerationStructureGeometryTrianglesDataKHR geometry_triangles_data{
-            .vertexFormat = vk::Format::eR32G32B32Sfloat,
-            .vertexData = vertex_address,
-            .vertexStride = sizeof(Vertex),
-            .maxVertex = max_vertex,
-            .indexType = vk::IndexType::eUint32,
-            .indexData = index_address + mesh.first_index * sizeof(uint32_t),
-        };
-
-        vk::AccelerationStructureGeometryKHR geometry{
-            .geometryType = vk::GeometryTypeKHR::eTriangles,
-            .geometry = geometry_triangles_data,
-            .flags = vk::GeometryFlagBitsKHR::eOpaque,
-        };
-
-        vk::AccelerationStructureBuildRangeInfoKHR range_info{
-            .primitiveCount = mesh.index_count / 3,
-            .primitiveOffset = 0,
-            .firstVertex = 0,
-            .transformOffset = 0,
-        };
-
-        vk::AccelerationStructureBuildGeometryInfoKHR geometry_info{
-            .type = vk::AccelerationStructureTypeKHR::eBottomLevel,
-            .flags = vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace,
-            .mode = vk::BuildAccelerationStructureModeKHR::eBuild,
-            .geometryCount = 1,
-            .pGeometries = &geometry,
-        };
-
-        std::vector max_primitives{range_info.primitiveCount};
-
-        auto sizes_info = ctx.get_device().get().getAccelerationStructureBuildSizesKHR(
-            vk::AccelerationStructureBuildTypeKHR::eDevice,
-            geometry_info,
-            max_primitives);
-
-        blases.emplace_back(ctx.get_device(),
-                            ctx.get_allocator(),
-                            sizes_info,
-                            vk::AccelerationStructureTypeKHR::eBottomLevel);
-
-        auto& scratch_buffer = scratch_buffers.emplace_back(BufferBuilder()
-                                                            .size(sizes_info.buildScratchSize)
-                                                            .usage(
-                                                                vk::BufferUsageFlagBits::eStorageBuffer |
-                                                                vk::BufferUsageFlagBits::eShaderDeviceAddress)
-                                                            .min_alignment(
-                                                                as_props.minAccelerationStructureScratchOffsetAlignment)
-                                                            .build(ctx.get_allocator()));
-
-        geometry_info.dstAccelerationStructure = blases.back().get_handle();
-        geometry_info.scratchData = scratch_buffer.get_device_address(ctx.get_device());
-
-        single_time_encoder.get_cmd().buildAccelerationStructuresKHR({geometry_info}, {&range_info});
-    }
-
-    vk::MemoryBarrier2 build_barrier{
-        .srcStageMask = vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
-        .srcAccessMask = vk::AccessFlagBits2::eAccelerationStructureWriteKHR,
-        .dstStageMask = vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
-        .dstAccessMask = vk::AccessFlagBits2::eAccelerationStructureReadKHR,
-    };
-
-    vk::DependencyInfo dependency_info{
-        .memoryBarrierCount = 1,
-        .pMemoryBarriers = &build_barrier,
-    };
-
-    single_time_encoder.get_cmd().pipelineBarrier2(dependency_info);
-
-    single_time_encoder.submit(ctx.get_device());
-}
-
-
-Model::Model(const Context& ctx, const tinygltf::Model& gltf_model) {
-    std::vector<Vertex> vertices;
-    std::vector<uint32_t> indices;
-    std::vector<Mesh> meshes;
-
+Model::Model(const tinygltf::Model& gltf_model) {
     for (const auto& gltf_mesh : gltf_model.meshes) {
-        process_mesh(gltf_model, gltf_mesh, vertices, indices, meshes);
+        process_mesh(gltf_model, gltf_mesh);
     }
 
     const int scene_idx = gltf_model.defaultScene != -1 ? gltf_model.defaultScene : 0;
@@ -270,26 +144,4 @@ Model::Model(const Context& ctx, const tinygltf::Model& gltf_model) {
     for (const int node_index : gltf_scene.nodes) {
         process_node(gltf_model, node_index, glm::mat4(1.0f));
     }
-
-    create_vertex_buffer(ctx.get_allocator(), vertices.size());
-    create_index_buffer(ctx.get_allocator(), indices.size());
-
-    memcpy(vertex_buffer.mapped_ptr(), vertices.data(), sizeof(Vertex) * vertices.size());
-    memcpy(index_buffer.mapped_ptr(), indices.data(), sizeof(u_int32_t) * indices.size());
-
-    vertex_address = vertex_buffer.get_device_address(ctx.get_device());
-    index_address = index_buffer.get_device_address(ctx.get_device());
-
-    gpu_meshes.reserve(meshes.size());
-
-    for (const auto& mesh : meshes) {
-        gpu_meshes.push_back({
-            .vertex_address = vertex_address,
-            .index_address = index_address,
-            .first_index = mesh.first_index,
-            .material_index = 0
-        });
-    }
-
-    build_blases(ctx, vertex_address, index_address, meshes, vertices.size() - 1);
 }

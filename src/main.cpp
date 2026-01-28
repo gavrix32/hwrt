@@ -40,9 +40,8 @@ int main() {
 
         Timer timer{};
         Context ctx(validation);
-        AssetLoader asset(ctx);
 
-        auto model = asset.load_model("../assets/models/sponza.glb");
+        auto model = AssetLoader::load_model("../assets/models/ABeautifulGame.glb");
 
         auto camera = Camera();
         camera.set_pos(glm::vec3(0.0f, 0.0f, 1.0f));
@@ -50,6 +49,7 @@ int main() {
         Scene scene;
         scene.set_camera(camera);
         scene.add_instance(model, glm::mat4(1.0f));
+        scene.build_blases(ctx);
         scene.build_tlas(ctx);
 
         Renderer renderer(ctx);
