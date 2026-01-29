@@ -1,5 +1,7 @@
 #include <spdlog/spdlog.h>
 
+#include <random>
+
 #include "asset.h"
 #include "context.h"
 #include "input.h"
@@ -12,7 +14,6 @@
 #define HEIGHT 720
 
 // TODO: Abstractions (sbt, image, view, imgui)
-// TODO: Model instancing
 // TODO: Normal logging without macro
 // TODO: Shader hot reloading
 // TODO: Meshoptimizer?
@@ -48,9 +49,34 @@ int main() {
 
         Scene scene;
         scene.set_camera(camera);
-        scene.add_instance(model, glm::mat4(1.0f));
+        // scene.add_instance(model, glm::mat4(1.0f));
+
+        std::default_random_engine generator;
+        std::uniform_real_distribution distribution(0.0f, 360.0f);
+
+        int size = 67;
+        int offset = 2;
+        for (int i = 0; i < size; i += offset) {
+            for (int j = 0; j < size; j += offset) {
+                for (int k = 0; k < size; k += offset) {
+                    glm::mat4 model_matrix = glm::translate(glm::mat4(1.0f), glm::vec3(i, j, k));
+
+                    float angleX = glm::radians(distribution(generator));
+                    float angleY = glm::radians(distribution(generator));
+                    float angleZ = glm::radians(distribution(generator));
+
+                    model_matrix = glm::rotate(model_matrix, angleX, glm::vec3(1.0f, 0.0f, 0.0f));
+                    model_matrix = glm::rotate(model_matrix, angleY, glm::vec3(0.0f, 1.0f, 0.0f));
+                    model_matrix = glm::rotate(model_matrix, angleZ, glm::vec3(0.0f, 0.0f, 1.0f));
+
+                    scene.add_instance(model, model_matrix);
+                }
+            }
+        }
         scene.build_blases(ctx);
         scene.build_tlas(ctx);
+
+        spdlog::info("Loaded scene with {} instances", pow(size, 3));
 
         Renderer renderer(ctx);
 

@@ -1,6 +1,7 @@
 #include "scene.h"
 
 #include "context.h"
+#include "spdlog/spdlog.h"
 #include "vulkan/encoder.h"
 
 // GLM 4x4 column-major to Vulkan 3x4 row-major matrix
@@ -37,6 +38,8 @@ void Scene::add_instance(const Model& model, const glm::mat4& transform) {
 }
 
 void Scene::build_blases(const Context& ctx) {
+    spdlog::info("Building blases...");
+
     global_vertex_buffer = BufferBuilder()
                            .size(sizeof(Vertex) * global_vertices.size())
                            .usage(vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eStorageBuffer |
@@ -150,6 +153,8 @@ void Scene::build_blases(const Context& ctx) {
 
 
 void Scene::build_tlas(const Context& ctx) {
+    spdlog::info("Building tlas...");
+
     std::vector<vk::AccelerationStructureInstanceKHR> instances;
 
     // TODO: to func

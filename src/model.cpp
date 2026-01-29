@@ -144,4 +144,6 @@ Model::Model(const tinygltf::Model& gltf_model) {
     for (const int node_index : gltf_scene.nodes) {
         process_node(gltf_model, node_index, glm::mat4(1.0f));
     }
+
+    spdlog::info("Loaded model with {} triangles", indices.size() / 3);
 }
