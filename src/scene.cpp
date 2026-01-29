@@ -71,10 +71,20 @@ void Scene::build_blases(const Context& ctx) {
     std::vector<Buffer> scratch_buffers;
 
     blases.resize(blas_count);
+    gpu_meshes.resize(blas_count);
 
     for (const auto& [model_ptr, model_info] : unique_models) {
         for (auto i = 0; i < model_ptr->meshes.size(); ++i) {
             const auto& mesh = model_ptr->meshes[i];
+            uint32_t blas_id = model_info.first_blas_id + i;
+
+            uint64_t vertex_offset = model_info.global_vertex_offset * sizeof(Vertex);
+            uint64_t index_offset = (model_info.global_index_offset + mesh.index_offset) * sizeof(uint32_t);
+
+            gpu_meshes[blas_id] = GpuMesh{
+                .vertex_address = global_vertex_buffer.get_device_address(ctx.get_device()) + vertex_offset,
+                .index_address = global_index_buffer.get_device_address(ctx.get_device()) + index_offset,
+            };
 
             vk::AccelerationStructureGeometryTrianglesDataKHR geometry_triangles_data{
                 .vertexFormat = vk::Format::eR32G32B32Sfloat,
@@ -113,10 +123,10 @@ void Scene::build_blases(const Context& ctx) {
                 geometry_info,
                 max_primitives);
 
-            blases[model_info.first_blas_id + i] = AccelerationStructure(ctx.get_device(),
-                                                                         ctx.get_allocator(),
-                                                                         sizes_info,
-                                                                         vk::AccelerationStructureTypeKHR::eBottomLevel);
+            blases[blas_id] = AccelerationStructure(ctx.get_device(),
+                                                    ctx.get_allocator(),
+                                                    sizes_info,
+                                                    vk::AccelerationStructureTypeKHR::eBottomLevel);
 
             auto& scratch_buffer = scratch_buffers.emplace_back(BufferBuilder()
                                                                 .size(sizes_info.buildScratchSize)
@@ -127,12 +137,23 @@ void Scene::build_blases(const Context& ctx) {
                                                                     as_props.minAccelerationStructureScratchOffsetAlignment)
                                                                 .build(ctx.get_allocator()));
 
-            geometry_info.dstAccelerationStructure = blases[model_info.first_blas_id + i].get_handle();
+            geometry_info.dstAccelerationStructure = blases[blas_id].get_handle();
             geometry_info.scratchData = scratch_buffer.get_device_address(ctx.get_device());
 
             single_time_encoder.get_cmd().buildAccelerationStructuresKHR({geometry_info}, {&range_info});
         }
     }
+
+    gpu_mesh_buffer = BufferBuilder()
+                      .size(sizeof(GpuMesh) * gpu_meshes.size())
+                      .usage(
+                          vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress)
+                      .allocation_flags(
+                          VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                          VMA_ALLOCATION_CREATE_MAPPED_BIT)
+                      .build(ctx.get_allocator());
+
+    memcpy(gpu_mesh_buffer.mapped_ptr(), gpu_meshes.data(), gpu_meshes.size() * sizeof(GpuMesh));
 
     vk::MemoryBarrier2 build_barrier{
         .srcStageMask = vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
@@ -151,24 +172,10 @@ void Scene::build_blases(const Context& ctx) {
     single_time_encoder.submit(ctx.get_device());
 }
 
-
 void Scene::build_tlas(const Context& ctx) {
     spdlog::info("Building tlas...");
 
     std::vector<vk::AccelerationStructureInstanceKHR> instances;
-
-    // TODO: to func
-    // const Buffer gpu_meshes_buffer = BufferBuilder()
-    //                                  .size(sizeof(GpuMesh) * gpu_meshes.size())
-    //                                  .usage(
-    //                                      vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress)
-    //                                  .allocation_flags(
-    //                                      VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-    //                                      VMA_ALLOCATION_CREATE_MAPPED_BIT)
-    //                                  .build(ctx.get_allocator());
-    //
-    // memcpy(gpu_meshes_buffer.mapped_ptr(), gpu_meshes.data(), sizeof(GpuMesh) * gpu_meshes.size());
-    // gpu_meshes_address = gpu_meshes_buffer.get_device_address(ctx.get_device());
 
     for (const auto& model_instance : model_instances) {
         for (const auto& mesh_instance : model_instance.model.mesh_instances) {
@@ -176,7 +183,7 @@ void Scene::build_tlas(const Context& ctx) {
 
             vk::AccelerationStructureInstanceKHR tlas_instance{
                 .transform = vk_matrix(final_transform),
-                .instanceCustomIndex = model_instance.info.id,
+                .instanceCustomIndex = model_instance.info.first_blas_id + mesh_instance.mesh_index,
                 .mask = 0xFF,
                 .instanceShaderBindingTableRecordOffset = 0,
                 .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,

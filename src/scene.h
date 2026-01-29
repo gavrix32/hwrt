@@ -20,12 +20,10 @@ struct ModelInstance {
     ModelInfo info;
 };
 
-// struct alignas(8) GpuMesh {
-//     uint64_t vertex_address;
-//     uint64_t index_address;
-//     uint32_t index_offset;
-//     uint32_t material_index;
-// };
+struct alignas(8) GpuMesh {
+    uint64_t vertex_address;
+    uint64_t index_address;
+};
 
 class Scene {
     std::unordered_map<const Model*, ModelInfo> unique_models;
@@ -38,6 +36,10 @@ class Scene {
 
     Buffer global_vertex_buffer;
     Buffer global_index_buffer;
+
+    std::vector<GpuMesh> gpu_meshes;
+
+    Buffer gpu_mesh_buffer;
 
     uint32_t blas_count = 0;
     std::vector<AccelerationStructure> blases;
@@ -61,5 +63,9 @@ public:
 
     [[nodiscard]] const AccelerationStructure& get_tlas() const {
         return tlas;
+    }
+
+    [[nodiscard]] const Buffer& get_gpu_mesh_buffer() const {
+        return gpu_mesh_buffer;
     }
 };
