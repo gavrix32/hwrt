@@ -1,22 +1,35 @@
-#include <tiny_gltf.h>
-
 #include "asset.h"
 #include "model.h"
+#include "fastgltf/base64.hpp"
+#include "fastgltf/core.hpp"
 #include "vulkan/utils.h"
 
-Model AssetLoader::load_model(const std::string& filename) {
-    spdlog::info("Loading glTF model...");
+Model AssetLoader::load_model(const std::filesystem::path& path) {
+    spdlog::info("Loading glTF: {}", path.string());
 
-    tinygltf::Model gltf_model;
-    tinygltf::TinyGLTF gltf_loader;
-    std::string err;
-    std::string warn;
+    if (!std::filesystem::exists(path)) {
+        spdlog::critical("File not found: {}", path.string());
+    }
 
-    const bool ret = gltf_loader.LoadBinaryFromFile(&gltf_model, &err, &warn, filename);
+    auto data_result = fastgltf::GltfDataBuffer::FromPath(path);
+    if (data_result.error() != fastgltf::Error::None) {
+        spdlog::error("Failed to load file content: {}", fastgltf::getErrorMessage(data_result.error()));
+    }
 
-    if (!warn.empty()) spdlog::warn("glTF warning: {}", warn);
-    if (!err.empty()) spdlog::error("glTF error: {}", err);
-    if (!ret) spdlog::critical("glTF failed to parse: {}", filename);
+    fastgltf::GltfDataBuffer data = std::move(data_result.get());
 
-    return Model(gltf_model);
+    fastgltf::Parser parser;
+
+    constexpr auto gltf_options = fastgltf::Options::LoadExternalBuffers |
+                                 fastgltf::Options::DecomposeNodeMatrices;
+
+    auto asset_result = parser.loadGltf(data, path.parent_path(), gltf_options);
+
+    if (asset_result.error() != fastgltf::Error::None) {
+        spdlog::error("Failed to parse glTF: {}", fastgltf::getErrorMessage(asset_result.error()));
+    }
+
+    const fastgltf::Asset asset = std::move(asset_result.get());
+
+    return Model(asset);
 }

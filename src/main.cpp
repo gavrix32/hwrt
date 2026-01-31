@@ -55,11 +55,12 @@ int main() {
         std::uniform_real_distribution distribution(0.0f, 360.0f);
 
         int size = 67;
-        int offset = 2;
-        for (int i = 0; i < size; i += offset) {
-            for (int j = 0; j < size; j += offset) {
-                for (int k = 0; k < size; k += offset) {
-                    glm::mat4 model_matrix = glm::translate(glm::mat4(1.0f), glm::vec3(i, j, k));
+        for (int i = 0; i < size; ++i) {
+            for (int j = 0; j < size; ++j) {
+                for (int k = 0; k < size; ++k) {
+                    float offset = 2.0f;
+
+                    glm::mat4 model_matrix = glm::translate(glm::mat4(1.0f), glm::vec3(i, j, k) * offset);
 
                     float angleX = glm::radians(distribution(generator));
                     float angleY = glm::radians(distribution(generator));

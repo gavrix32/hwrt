@@ -3,7 +3,8 @@ BasedOnStyle: Google
 
 IndentWidth: 4
 ColumnLimit: 130
-BinPackArguments: false
+BinPackArguments: true
 AllowAllArgumentsOnNextLine: false
 AllowShortIfStatementsOnASingleLine: true
+AllowShortCaseLabelsOnASingleLine: true
 SpaceAfterCStyleCast: true

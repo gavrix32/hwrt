@@ -1,6 +1,6 @@
 #pragma once
 
-#include <string>
+#include <filesystem>
 
 class Model;
 
@@ -8,5 +8,5 @@ class AssetLoader {
 public:
     AssetLoader() = default;
 
-    [[nodiscard]] static Model load_model(const std::string& filename);
+    [[nodiscard]] static Model load_model(const std::filesystem::path& path);
 };

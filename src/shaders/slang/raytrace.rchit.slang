@@ -1,7 +1,7 @@
 import common;
 
 [[vk::binding(3, 0)]]
-StructuredBuffer<Mesh> meshes;
+StructuredBuffer<Mesh, ScalarDataLayout> meshes;
 
 [shader("closesthit")]
 void main(inout Payload payload, in BuiltInTriangleIntersectionAttributes attr) {
@@ -26,6 +26,13 @@ void main(inout Payload payload, in BuiltInTriangleIntersectionAttributes attr) 
 
     float3 normal = v0.normal * bary.x + v1.normal * bary.y + v2.normal * bary.z;
     normal = mul(ObjectToWorld3x4(), float4(normal, 0.0)).xyz;
+    normal = normalize(normal);
+
+    float3 tangent = v0.tangent.xyz * bary.x + v1.tangent.xyz * bary.y + v2.tangent.xyz * bary.z;
+    tangent = mul(ObjectToWorld3x4(), float4(tangent, 0.0)).xyz;
+    tangent = normalize(tangent);
+
+    float2 uv = v0.texcoord.xy * bary.x + v1.texcoord.xy * bary.y + v2.texcoord.xy * bary.z;
 
     payload.color = normal;
 }

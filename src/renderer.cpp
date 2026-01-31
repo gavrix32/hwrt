@@ -13,28 +13,18 @@
 #include "camera.h"
 #include "window.h"
 
-// Передать адреса через push constants
-// Задать instanceCustomIndex в TLAS
 // textures[NonUniformResourceIndex(materialID)];
-// ObjectToWorld3x4();
 
 // TODO: is it necessary?
 vk::Format srgb_to_unorm(const vk::Format format) {
     switch (format) {
-        case vk::Format::eR8Srgb:
-            return vk::Format::eR8Unorm;
-        case vk::Format::eR8G8Srgb:
-            return vk::Format::eR8G8Unorm;
-        case vk::Format::eR8G8B8Srgb:
-            return vk::Format::eR8G8B8Unorm;
-        case vk::Format::eB8G8R8Srgb:
-            return vk::Format::eB8G8R8Unorm;
-        case vk::Format::eR8G8B8A8Srgb:
-            return vk::Format::eR8G8B8A8Unorm;
-        case vk::Format::eB8G8R8A8Srgb:
-            return vk::Format::eB8G8R8A8Unorm;
-        default:
-            return format;
+        case vk::Format::eR8Srgb: return vk::Format::eR8Unorm;
+        case vk::Format::eR8G8Srgb: return vk::Format::eR8G8Unorm;
+        case vk::Format::eR8G8B8Srgb: return vk::Format::eR8G8B8Unorm;
+        case vk::Format::eB8G8R8Srgb: return vk::Format::eB8G8R8Unorm;
+        case vk::Format::eR8G8B8A8Srgb: return vk::Format::eR8G8B8A8Unorm;
+        case vk::Format::eB8G8R8A8Srgb: return vk::Format::eB8G8R8A8Unorm;
+        default: return format;
     }
 }
 
@@ -129,6 +119,7 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
     bindings.push_back(gpu_mesh_binding);
 
     vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_create_info{
+        .flags = vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptor,
         .bindingCount = static_cast<uint32_t>(bindings.size()),
         .pBindings = bindings.data(),
     };

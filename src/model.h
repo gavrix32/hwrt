@@ -1,6 +1,6 @@
 #pragma once
 
-#include "tiny_gltf.h"
+#include "fastgltf/types.hpp"
 #include "glm/glm.hpp"
 
 struct Vertex {
@@ -23,8 +23,8 @@ struct MeshInstance {
 };
 
 class Model {
-    void process_mesh(const tinygltf::Model& gltf_model, const tinygltf::Mesh& gltf_mesh);
-    void process_node(const tinygltf::Model& gltf_model, int node_index, const glm::mat4& parent_transform);
+    void process_mesh(const fastgltf::Asset& asset, const fastgltf::Mesh& gltf_mesh);
+    void process_node(const fastgltf::Asset& asset, size_t node_index, const glm::mat4& parent_transform);
 
 public:
     std::vector<Vertex> vertices;
@@ -32,5 +32,5 @@ public:
     std::vector<Mesh> meshes;
     std::vector<MeshInstance> mesh_instances;
 
-    explicit Model(const tinygltf::Model& gltf_model);
+    explicit Model(const fastgltf::Asset& asset);
 };
