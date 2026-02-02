@@ -63,3 +63,5 @@ target_compile_definitions(hwrt PRIVATE
         GLM_FORCE_RADIANS
         GLM_ENABLE_EXPERIMENTAL
 )
+
+target_include_directories(hwrt PRIVATE external/stb)

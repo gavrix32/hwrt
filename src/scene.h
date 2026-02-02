@@ -23,6 +23,7 @@ struct ModelInstance {
 struct alignas(8) GpuMesh {
     uint64_t vertex_address;
     uint64_t index_address;
+    uint64_t material_address;
 };
 
 class Scene {

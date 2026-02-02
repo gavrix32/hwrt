@@ -34,5 +34,5 @@ void main(inout Payload payload, in BuiltInTriangleIntersectionAttributes attr) 
 
     float2 uv = v0.texcoord.xy * bary.x + v1.texcoord.xy * bary.y + v2.texcoord.xy * bary.z;
 
-    payload.color = normal;
+    payload.color = normal * 0.5 + 0.5;
 }

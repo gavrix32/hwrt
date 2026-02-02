@@ -21,7 +21,7 @@ Model AssetLoader::load_model(const std::filesystem::path& path) {
     fastgltf::Parser parser;
 
     constexpr auto gltf_options = fastgltf::Options::LoadExternalBuffers |
-                                 fastgltf::Options::DecomposeNodeMatrices;
+                                  fastgltf::Options::DecomposeNodeMatrices;
 
     auto asset_result = parser.loadGltf(data, path.parent_path(), gltf_options);
 
