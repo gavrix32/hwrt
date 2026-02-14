@@ -11,8 +11,64 @@
 
 #include "texture.h"
 
-glm::mat4 get_transform_matrix(const fastgltf::Node& node) {
-    const auto& transform = node.transform;
+void Model::process_mesh(const fastgltf::Asset& asset, const fastgltf::Mesh& gltf_mesh) {
+    Mesh mesh{};
+
+    mesh.primitives.reserve(gltf_mesh.primitives.size());
+    for (const auto& gltf_primitive : gltf_mesh.primitives) {
+        Primitive primitive{};
+
+        auto* pos_iter = gltf_primitive.findAttribute("POSITION");
+        if (pos_iter == gltf_primitive.attributes.end()) continue;
+
+        const auto& pos_accessor = asset.accessors[pos_iter->accessorIndex];
+        primitive.vertices.resize(pos_accessor.count);
+
+        fastgltf::iterateAccessorWithIndex<glm::vec3>(asset, pos_accessor, [&](const glm::vec3 pos, const size_t idx) {
+            primitive.vertices[idx].position = pos;
+        });
+
+        if (const auto* norm_iter = gltf_primitive.findAttribute("NORMAL"); norm_iter != gltf_primitive.attributes.end()) {
+            const auto& norm_accessor = asset.accessors[norm_iter->accessorIndex];
+            fastgltf::iterateAccessorWithIndex<glm::vec3>(asset, norm_accessor, [&](const glm::vec3 norm, const size_t idx) {
+                primitive.vertices[idx].normal = norm;
+            });
+        }
+
+        if (const auto* tan_iter = gltf_primitive.findAttribute("TANGENT"); tan_iter != gltf_primitive.attributes.end()) {
+            const auto& tan_accessor = asset.accessors[tan_iter->accessorIndex];
+            fastgltf::iterateAccessorWithIndex<glm::vec4>(asset, tan_accessor, [&](const glm::vec4 tan, const size_t idx) {
+                primitive.vertices[idx].tangent = tan;
+            });
+        }
+
+        if (const auto* uv_iter = gltf_primitive.findAttribute("TEXCOORD_0"); uv_iter != gltf_primitive.attributes.end()) {
+            const auto& uv_accessor = asset.accessors[uv_iter->accessorIndex];
+            fastgltf::iterateAccessorWithIndex<glm::vec2>(asset, uv_accessor, [&](const glm::vec2 uv, const size_t idx) {
+                primitive.vertices[idx].texcoord = uv;
+            });
+        }
+
+        if (gltf_primitive.indicesAccessor.has_value()) {
+            const auto& accessor = asset.accessors[gltf_primitive.indicesAccessor.value()];
+            primitive.indices.reserve(accessor.count);
+            fastgltf::iterateAccessor<std::uint32_t>(asset, accessor, [&](const std::uint32_t index) {
+                primitive.indices.push_back(index);
+            });
+        }
+
+        if (gltf_primitive.materialIndex.has_value()) {
+            primitive.material_index = gltf_primitive.materialIndex.value();
+        }
+
+        mesh.primitives.push_back(primitive);
+    }
+
+    meshes.emplace_back(mesh);
+}
+
+glm::mat4 get_transform_matrix(const fastgltf::Node& gltf_node) {
+    const auto& transform = gltf_node.transform;
 
     if (const auto* trs = std::get_if<fastgltf::TRS>(&transform)) {
         const auto t = glm::make_vec3(trs->translation.data());
@@ -30,77 +86,17 @@ glm::mat4 get_transform_matrix(const fastgltf::Node& node) {
     return {1.0f};
 }
 
-void Model::process_mesh(const fastgltf::Asset& asset, const fastgltf::Mesh& gltf_mesh) {
-    Mesh mesh{};
-
-    mesh.index_offset = indices.size();
-    mesh.vertex_offset = vertices.size();
-
-    for (const auto& primitive : gltf_mesh.primitives) {
-        auto* pos_iter = primitive.findAttribute("POSITION");
-        if (pos_iter == primitive.attributes.end()) continue;
-
-        const auto& pos_accessor = asset.accessors[pos_iter->accessorIndex];
-
-        const size_t vertex_count = pos_accessor.count;
-        size_t base_vertex = vertices.size();
-        vertices.resize(base_vertex + vertex_count);
-
-        fastgltf::iterateAccessorWithIndex<glm::vec3>(asset, pos_accessor, [&](const glm::vec3 pos, const size_t idx) {
-            vertices[base_vertex + idx].position = pos;
-        });
-
-        if (const auto* norm_iter = primitive.findAttribute("NORMAL"); norm_iter != primitive.attributes.end()) {
-            const auto& norm_accessor = asset.accessors[norm_iter->accessorIndex];
-            fastgltf::iterateAccessorWithIndex<glm::vec3>(asset, norm_accessor, [&](const glm::vec3 norm, const size_t idx) {
-                vertices[base_vertex + idx].normal = norm;
-            });
-        }
-
-        if (const auto* tan_iter = primitive.findAttribute("TANGENT"); tan_iter != primitive.attributes.end()) {
-            const auto& tan_accessor = asset.accessors[tan_iter->accessorIndex];
-            fastgltf::iterateAccessorWithIndex<glm::vec4>(asset, tan_accessor, [&](const glm::vec4 tan, const size_t idx) {
-                vertices[base_vertex + idx].tangent = tan;
-            });
-        }
-
-        if (const auto* uv_iter = primitive.findAttribute("TEXCOORD_0"); uv_iter != primitive.attributes.end()) {
-            const auto& uv_accessor = asset.accessors[uv_iter->accessorIndex];
-            fastgltf::iterateAccessorWithIndex<glm::vec2>(asset, uv_accessor, [&](const glm::vec2 uv, const size_t idx) {
-                vertices[base_vertex + idx].texcoord = uv;
-            });
-        }
-
-        if (primitive.indicesAccessor.has_value()) {
-            const auto& accessor = asset.accessors[primitive.indicesAccessor.value()];
-            indices.reserve(indices.size() + accessor.count);
-            fastgltf::iterateAccessor<std::uint32_t>(asset, accessor, [&](const std::uint32_t index) {
-                indices.push_back(base_vertex + index);
-            });
-        }
-
-        // TODO: у одной меши может быть несколько материалов (для каждого примитива),
-        // TODO: а я загружаю 1 материал
-        if (primitive.materialIndex.has_value()) {
-            mesh.material_index = primitive.materialIndex.value();
-        }
-    }
-    mesh.index_count = indices.size() - mesh.index_offset;
-    mesh.vertex_count = vertices.size() - mesh.vertex_offset;
-    meshes.emplace_back(mesh);
-}
-
 void Model::process_node(const fastgltf::Asset& asset, const size_t node_index, const glm::mat4& parent_transform) {
-    const auto& node = asset.nodes[node_index];
+    const auto& gltf_node = asset.nodes[node_index];
 
-    const glm::mat4 local_transform = get_transform_matrix(node);
+    const glm::mat4 local_transform = get_transform_matrix(gltf_node);
     const glm::mat4 global_transform = parent_transform * local_transform;
 
-    if (node.meshIndex.has_value()) {
-        mesh_instances.emplace_back(node.meshIndex.value(), global_transform);
+    if (gltf_node.meshIndex.has_value()) {
+        nodes.emplace_back(gltf_node.meshIndex.value(), global_transform);
     }
 
-    for (const size_t child_index : node.children) {
+    for (const size_t child_index : gltf_node.children) {
         process_node(asset, child_index, global_transform);
     }
 }
@@ -179,7 +175,7 @@ void Model::process_texture(const fastgltf::Asset& asset, const fastgltf::Image&
 }
 
 void Model::process_material(const fastgltf::Asset& asset, const fastgltf::Material& gltf_material) {
-    Material material;
+    Material material{};
 
     if (gltf_material.pbrData.baseColorTexture.has_value()) {
         const size_t texture_index = gltf_material.pbrData.baseColorTexture.value().textureIndex;
@@ -215,24 +211,21 @@ void Model::process_material(const fastgltf::Asset& asset, const fastgltf::Mater
 
 Model::Model(const fastgltf::Asset& asset) {
     meshes.reserve(asset.meshes.size());
+    size_t prim_count = 0;
     for (const auto& gltf_mesh : asset.meshes) {
         process_mesh(asset, gltf_mesh);
+        prim_count += gltf_mesh.primitives.size();
     }
 
     size_t scene_index = 0;
     if (asset.defaultScene.has_value()) {
         scene_index = asset.defaultScene.value();
     }
-    const auto& gltf_scene = asset.scenes[scene_index];
+    const auto& node_indices = asset.scenes[scene_index].nodeIndices;
 
-    mesh_instances.reserve(gltf_scene.nodeIndices.size());
-    for (const size_t node_index : gltf_scene.nodeIndices) {
+    nodes.reserve(node_indices.size());
+    for (const size_t node_index : node_indices) {
         process_node(asset, node_index, glm::mat4(1.0f));
-    }
-
-    textures.reserve(asset.images.size());
-    for (const auto& image : asset.images) {
-        process_texture(asset, image);
     }
 
     materials.reserve(asset.materials.size());
@@ -240,8 +233,15 @@ Model::Model(const fastgltf::Asset& asset) {
         process_material(asset, material);
     }
 
-    spdlog::info("Loaded model with {} triangles, {} textures and {} materials",
-                 indices.size() / 3,
-                 textures.size(),
-                 materials.size());
+    textures.reserve(asset.images.size());
+    for (const auto& image : asset.images) {
+        process_texture(asset, image);
+    }
+
+    spdlog::info("Loaded model with {} meshes, {} primitives, {} nodes, {} materials and {} textures",
+                 meshes.size(),
+                 prim_count,
+                 nodes.size(),
+                 materials.size(),
+                 textures.size());
 }

@@ -5,46 +5,51 @@
 #include "model.h"
 #include "vulkan/acceleration.h"
 
-struct ModelInfo {
-    uint32_t id;
-    uint32_t first_blas_id;
-    uint32_t global_vertex_offset;
-    uint32_t global_index_offset;
-    uint32_t vertex_count;
-    uint32_t index_count;
-};
-
 struct ModelInstance {
-    const Model& model;
+    std::shared_ptr<Model> model;
     glm::mat4 transform;
-    ModelInfo info;
+    uint32_t first_blas;
 };
 
-struct alignas(8) GpuMesh {
+struct Geometry {
+    uint32_t vertex_offset;
+    uint32_t vertex_count;
+    uint32_t index_offset;
+    uint32_t index_count;
+    uint32_t material_index;
+};
+
+struct SceneAddresses {
     uint64_t vertex_address;
     uint64_t index_address;
     uint64_t material_address;
+    uint64_t geometry_address;
+};
+
+struct Blas {
+    AccelerationStructure as;
+    uint32_t geometry_offset;
+    uint32_t geometry_count;
 };
 
 class Scene {
-    std::unordered_map<const Model*, ModelInfo> unique_models;
-
     Camera camera;
+
     std::vector<ModelInstance> model_instances;
 
-    std::vector<Vertex> global_vertices;
-    std::vector<uint32_t> global_indices;
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
+    std::vector<Material> materials;
+    std::vector<Geometry> geometries;
 
-    Buffer global_vertex_buffer;
-    Buffer global_index_buffer;
+    Buffer vertex_buffer;
+    Buffer index_buffer;
+    Buffer material_buffer;
+    Buffer geometry_buffer;
 
-    std::vector<GpuMesh> gpu_meshes;
+    SceneAddresses scene_addresses;
 
-    Buffer gpu_mesh_buffer;
-
-    uint32_t blas_count = 0;
-    std::vector<AccelerationStructure> blases;
-
+    std::vector<Blas> blases;
     AccelerationStructure tlas;
 
 public:
@@ -58,7 +63,8 @@ public:
         return camera;
     }
 
-    void add_instance(const Model& model, const glm::mat4& transform);
+    void add_instance(const std::shared_ptr<Model>& model, const glm::mat4& transform);
+
     void build_blases(const Context& ctx);
     void build_tlas(const Context& ctx);
 
@@ -66,7 +72,7 @@ public:
         return tlas;
     }
 
-    [[nodiscard]] const Buffer& get_gpu_mesh_buffer() const {
-        return gpu_mesh_buffer;
+    [[nodiscard]] const SceneAddresses& get_scene_address() const {
+        return scene_addresses;
     }
 };

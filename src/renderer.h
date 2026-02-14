@@ -12,15 +12,6 @@
 struct Resources {
     vk::raii::SurfaceKHR surface;
 
-    // Buffer vertex_buffer;
-    // Buffer index_buffer;
-
-    // Buffer blas_buffer;
-    // Buffer tlas_buffer;
-
-    // vk::raii::AccelerationStructureKHR blas;
-    // vk::raii::AccelerationStructureKHR tlas;
-
     Buffer sbt_buffer;
 
     vk::StridedDeviceAddressRegionKHR rgen_region{};

@@ -4,8 +4,13 @@
 #include "fastgltf/core.hpp"
 #include "vulkan/utils.h"
 
-Model AssetLoader::load_model(const std::filesystem::path& path) {
-    spdlog::info("Loading glTF: {}", path.string());
+std::shared_ptr<Model> AssetManager::get_model(const std::filesystem::path& path) {
+    if (const auto it = models_cache.find(path); it != models_cache.end()) {
+        spdlog::info("AssetManager: Loading from cache: {}", path.string());
+        return it->second;
+    }
+
+    spdlog::info("AssetManager: Loading from disk: {}", path.string());
 
     if (!std::filesystem::exists(path)) {
         spdlog::critical("File not found: {}", path.string());
@@ -31,5 +36,6 @@ Model AssetLoader::load_model(const std::filesystem::path& path) {
 
     const fastgltf::Asset asset = std::move(asset_result.get());
 
-    return Model(asset);
+    models_cache[path] = std::make_shared<Model>(asset);
+    return models_cache[path];
 }

@@ -4,10 +4,10 @@
 
 AccelerationStructure::AccelerationStructure(const Device& device,
                                              const Allocator& allocator,
-                                             const vk::AccelerationStructureBuildSizesInfoKHR& sizes_info,
+                                             const vk::AccelerationStructureBuildSizesInfoKHR& build_sizes,
                                              const vk::AccelerationStructureTypeKHR type) {
     buffer = BufferBuilder()
-             .size(sizes_info.accelerationStructureSize)
+             .size(build_sizes.accelerationStructureSize)
              .usage(
                  vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR |
                  vk::BufferUsageFlagBits::eShaderDeviceAddress)
@@ -15,7 +15,7 @@ AccelerationStructure::AccelerationStructure(const Device& device,
 
     const vk::AccelerationStructureCreateInfoKHR create_info{
         .buffer = buffer.get(),
-        .size = sizes_info.accelerationStructureSize,
+        .size = build_sizes.accelerationStructureSize,
         .type = type,
     };
     handle = device.get().createAccelerationStructureKHR(create_info);

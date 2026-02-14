@@ -14,7 +14,7 @@ public:
 
     explicit AccelerationStructure(const Device& device,
                                    const Allocator& allocator,
-                                   const vk::AccelerationStructureBuildSizesInfoKHR& sizes_info,
+                                   const vk::AccelerationStructureBuildSizesInfoKHR& build_sizes,
                                    vk::AccelerationStructureTypeKHR type);
 
     [[nodiscard]] const vk::raii::AccelerationStructureKHR& get_handle() const { return handle; }

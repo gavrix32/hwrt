@@ -12,54 +12,87 @@ vk::TransformMatrixKHR vk_matrix(const glm::mat4& m) {
     return out;
 }
 
-void Scene::add_instance(const Model& model, const glm::mat4& transform) {
-    ModelInfo info{};
+void Scene::add_instance(const std::shared_ptr<Model>& model, const glm::mat4& transform) {
+    const ModelInstance instance{
+        .model = model,
+        .transform = transform,
+        .first_blas = static_cast<uint32_t>(blases.size())
+    };
 
-    if (!unique_models.contains(&model)) {
-        info = ModelInfo{
-            .id = static_cast<uint32_t>(unique_models.size()),
-            .first_blas_id = blas_count,
-            .global_vertex_offset = static_cast<uint32_t>(global_vertices.size()),
-            .global_index_offset = static_cast<uint32_t>(global_indices.size()),
-            .vertex_count = static_cast<uint32_t>(model.vertices.size()),
-            .index_count = static_cast<uint32_t>(model.indices.size()),
-        };
-        unique_models[&model] = info;
+    for (auto& mesh : model->meshes) {
+        Blas blas{};
+        blas.geometry_offset = static_cast<uint32_t>(geometries.size());
+        blas.geometry_count = static_cast<uint32_t>(mesh.primitives.size());
 
-        blas_count = model.meshes.size();
-
-        global_vertices.insert(global_vertices.end(), model.vertices.begin(), model.vertices.end());
-        global_indices.insert(global_indices.end(), model.indices.begin(), model.indices.end());
-    } else {
-        info = unique_models.at(&model);
+        for (auto& primitive : mesh.primitives) {
+            Geometry geometry{
+                .vertex_offset = static_cast<uint32_t>(vertices.size()),
+                .vertex_count = static_cast<uint32_t>(primitive.vertices.size()),
+                .index_offset = static_cast<uint32_t>(indices.size()),
+                .index_count = static_cast<uint32_t>(primitive.indices.size()),
+                .material_index = static_cast<uint32_t>(materials.size()) + primitive.material_index,
+            };
+            geometries.push_back(geometry);
+            vertices.insert(vertices.end(), primitive.vertices.begin(), primitive.vertices.end());
+            indices.insert(indices.end(), primitive.indices.begin(), primitive.indices.end());
+        }
+        blases.push_back(std::move(blas));
     }
-
-    model_instances.push_back({model, transform, info});
+    materials.insert(materials.end(), model->materials.begin(), model->materials.end());
+    model_instances.push_back(instance);
 }
 
 void Scene::build_blases(const Context& ctx) {
     spdlog::info("Building blases...");
 
-    global_vertex_buffer = BufferBuilder()
-                           .size(sizeof(Vertex) * global_vertices.size())
-                           .usage(vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eStorageBuffer |
-                                  vk::BufferUsageFlagBits::eShaderDeviceAddress |
-                                  vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR)
-                           .allocation_flags(
-                               VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT)
-                           .build(ctx.get_allocator());
+    vertex_buffer = BufferBuilder()
+                    .size(sizeof(Vertex) * vertices.size())
+                    .usage(vk::BufferUsageFlagBits::eStorageBuffer |
+                           vk::BufferUsageFlagBits::eShaderDeviceAddress |
+                           vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR)
+                    .allocation_flags(
+                        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT)
+                    .build(ctx.get_allocator());
 
-    global_index_buffer = BufferBuilder()
-                          .size(sizeof(uint32_t) * global_indices.size())
-                          .usage(vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eStorageBuffer |
-                                 vk::BufferUsageFlagBits::eShaderDeviceAddress |
-                                 vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR)
-                          .allocation_flags(
-                              VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT)
-                          .build(ctx.get_allocator());
+    index_buffer = BufferBuilder()
+                   .size(sizeof(uint32_t) * indices.size())
+                   .usage(vk::BufferUsageFlagBits::eStorageBuffer |
+                          vk::BufferUsageFlagBits::eShaderDeviceAddress |
+                          vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR)
+                   .allocation_flags(
+                       VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT)
+                   .build(ctx.get_allocator());
 
-    memcpy(global_vertex_buffer.mapped_ptr(), global_vertices.data(), sizeof(Vertex) * global_vertices.size());
-    memcpy(global_index_buffer.mapped_ptr(), global_indices.data(), sizeof(u_int32_t) * global_indices.size());
+    material_buffer = BufferBuilder()
+                      .size(sizeof(Material) * materials.size())
+                      .usage(vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress)
+                      .allocation_flags(
+                          VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT)
+                      .build(ctx.get_allocator());
+
+    geometry_buffer = BufferBuilder()
+                      .size(sizeof(Geometry) * geometries.size())
+                      .usage(vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress)
+                      .allocation_flags(
+                          VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT)
+                      .build(ctx.get_allocator());
+
+    memcpy(vertex_buffer.mapped_ptr(), vertices.data(), vertices.size() * sizeof(Vertex));
+    memcpy(index_buffer.mapped_ptr(), indices.data(), indices.size() * sizeof(u_int32_t));
+    memcpy(material_buffer.mapped_ptr(), materials.data(), materials.size() * sizeof(Material));
+    memcpy(geometry_buffer.mapped_ptr(), geometries.data(), geometries.size() * sizeof(Geometry));
+
+    auto vertex_address = vertex_buffer.get_device_address(ctx.get_device());
+    auto index_address = index_buffer.get_device_address(ctx.get_device());
+    auto material_address = material_buffer.get_device_address(ctx.get_device());
+    auto geometry_address = geometry_buffer.get_device_address(ctx.get_device());
+
+    scene_addresses = SceneAddresses{
+        vertex_address,
+        index_address,
+        material_address,
+        geometry_address
+    };
 
     auto as_props = ctx.get_adapter().get().getProperties2<
         vk::PhysicalDeviceProperties2,
@@ -70,90 +103,65 @@ void Scene::build_blases(const Context& ctx) {
 
     std::vector<Buffer> scratch_buffers;
 
-    blases.resize(blas_count);
-    gpu_meshes.resize(blas_count);
+    for (auto& blas : blases) {
+        std::vector<vk::AccelerationStructureGeometryKHR> as_geometries(blas.geometry_count);
+        std::vector<vk::AccelerationStructureBuildRangeInfoKHR> as_ranges(blas.geometry_count);
+        std::vector<uint32_t> max_counts(blas.geometry_count);
 
-    for (const auto& [model_ptr, model_info] : unique_models) {
-        for (auto i = 0; i < model_ptr->meshes.size(); ++i) {
-            const auto& mesh = model_ptr->meshes[i];
-            uint32_t blas_id = model_info.first_blas_id + i;
+        for (uint32_t i = 0; i < blas.geometry_count; ++i) {
+            auto& geometry = geometries[blas.geometry_offset + i];
 
-            uint64_t vertex_offset = model_info.global_vertex_offset * sizeof(Vertex);
-            uint64_t index_offset = (model_info.global_index_offset + mesh.index_offset) * sizeof(uint32_t);
-
-            gpu_meshes[blas_id] = GpuMesh{
-                .vertex_address = global_vertex_buffer.get_device_address(ctx.get_device()) + vertex_offset,
-                .index_address = global_index_buffer.get_device_address(ctx.get_device()) + index_offset,
-            };
-
-            vk::AccelerationStructureGeometryTrianglesDataKHR geometry_triangles_data{
+            vk::AccelerationStructureGeometryTrianglesDataKHR triangles_data{
                 .vertexFormat = vk::Format::eR32G32B32Sfloat,
-                .vertexData = global_vertex_buffer.get_device_address(ctx.get_device()),
+                .vertexData = vertex_address + geometry.vertex_offset * sizeof(Vertex),
                 .vertexStride = sizeof(Vertex),
-                .maxVertex = mesh.vertex_count - 1,
+                .maxVertex = geometry.vertex_count - 1,
                 .indexType = vk::IndexType::eUint32,
-                .indexData = global_index_buffer.get_device_address(ctx.get_device()),
+                .indexData = index_address + geometry.index_offset * sizeof(uint32_t),
             };
 
-            vk::AccelerationStructureGeometryKHR geometry{
+            as_geometries[i] = vk::AccelerationStructureGeometryKHR{
                 .geometryType = vk::GeometryTypeKHR::eTriangles,
-                .geometry = geometry_triangles_data,
+                .geometry = triangles_data,
                 .flags = vk::GeometryFlagBitsKHR::eOpaque,
             };
 
-            vk::AccelerationStructureBuildRangeInfoKHR range_info{
-                .primitiveCount = mesh.index_count / 3,
-                .primitiveOffset = static_cast<uint32_t>((model_info.global_index_offset + mesh.index_offset) * sizeof(uint32_t)),
-                .firstVertex = model_info.global_vertex_offset,
-                .transformOffset = 0,
-            };
-
-            vk::AccelerationStructureBuildGeometryInfoKHR geometry_info{
-                .type = vk::AccelerationStructureTypeKHR::eBottomLevel,
-                .flags = vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace,
-                .mode = vk::BuildAccelerationStructureModeKHR::eBuild,
-                .geometryCount = 1,
-                .pGeometries = &geometry,
-            };
-
-            std::vector max_primitives{range_info.primitiveCount};
-
-            auto sizes_info = ctx.get_device().get().getAccelerationStructureBuildSizesKHR(
-                vk::AccelerationStructureBuildTypeKHR::eDevice,
-                geometry_info,
-                max_primitives);
-
-            blases[blas_id] = AccelerationStructure(ctx.get_device(),
-                                                    ctx.get_allocator(),
-                                                    sizes_info,
-                                                    vk::AccelerationStructureTypeKHR::eBottomLevel);
-
-            auto& scratch_buffer = scratch_buffers.emplace_back(BufferBuilder()
-                                                                .size(sizes_info.buildScratchSize)
-                                                                .usage(
-                                                                    vk::BufferUsageFlagBits::eStorageBuffer |
-                                                                    vk::BufferUsageFlagBits::eShaderDeviceAddress)
-                                                                .min_alignment(
-                                                                    as_props.minAccelerationStructureScratchOffsetAlignment)
-                                                                .build(ctx.get_allocator()));
-
-            geometry_info.dstAccelerationStructure = blases[blas_id].get_handle();
-            geometry_info.scratchData = scratch_buffer.get_device_address(ctx.get_device());
-
-            single_time_encoder.get_cmd().buildAccelerationStructuresKHR({geometry_info}, {&range_info});
+            as_ranges[i].primitiveCount = geometry.index_count / 3;
+            max_counts[i] = geometry.index_count / 3;
         }
+
+        vk::AccelerationStructureBuildGeometryInfoKHR build_info{
+            .type = vk::AccelerationStructureTypeKHR::eBottomLevel,
+            .flags = vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace,
+            .mode = vk::BuildAccelerationStructureModeKHR::eBuild,
+            .geometryCount = static_cast<uint32_t>(as_geometries.size()),
+            .pGeometries = as_geometries.data(),
+        };
+
+        auto build_sizes = ctx.get_device().get().getAccelerationStructureBuildSizesKHR(
+            vk::AccelerationStructureBuildTypeKHR::eDevice,
+            build_info,
+            max_counts);
+
+        blas.as = AccelerationStructure(ctx.get_device(),
+                                        ctx.get_allocator(),
+                                        build_sizes,
+                                        vk::AccelerationStructureTypeKHR::eBottomLevel);
+
+        auto& scratch_buffer = scratch_buffers.emplace_back(BufferBuilder()
+                                                            .size(build_sizes.buildScratchSize)
+                                                            .usage(
+                                                                vk::BufferUsageFlagBits::eStorageBuffer |
+                                                                vk::BufferUsageFlagBits::eShaderDeviceAddress)
+                                                            .min_alignment(
+                                                                as_props.minAccelerationStructureScratchOffsetAlignment)
+                                                            .build(ctx.get_allocator()));
+
+        build_info.dstAccelerationStructure = blas.as.get_handle();
+        build_info.scratchData = scratch_buffer.get_device_address(ctx.get_device());
+
+        single_time_encoder.get_cmd().buildAccelerationStructuresKHR({build_info}, as_ranges.data());
     }
-
-    gpu_mesh_buffer = BufferBuilder()
-                      .size(sizeof(GpuMesh) * gpu_meshes.size())
-                      .usage(
-                          vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress)
-                      .allocation_flags(
-                          VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                          VMA_ALLOCATION_CREATE_MAPPED_BIT)
-                      .build(ctx.get_allocator());
-
-    memcpy(gpu_mesh_buffer.mapped_ptr(), gpu_meshes.data(), gpu_meshes.size() * sizeof(GpuMesh));
 
     vk::MemoryBarrier2 build_barrier{
         .srcStageMask = vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
@@ -168,33 +176,32 @@ void Scene::build_blases(const Context& ctx) {
     };
 
     single_time_encoder.get_cmd().pipelineBarrier2(dependency_info);
-
     single_time_encoder.submit(ctx.get_device());
 }
 
 void Scene::build_tlas(const Context& ctx) {
     spdlog::info("Building tlas...");
 
-    std::vector<vk::AccelerationStructureInstanceKHR> instances;
+    std::vector<vk::AccelerationStructureInstanceKHR> tlas_instances;
 
     for (const auto& model_instance : model_instances) {
-        for (const auto& mesh_instance : model_instance.model.mesh_instances) {
-            glm::mat4 final_transform = model_instance.transform * mesh_instance.transform;
+        for (const auto& node : model_instance.model->nodes) {
+            glm::mat4 final_transform = model_instance.transform * node.transform;
+            uint32_t blas_idx = model_instance.first_blas + node.mesh_index;
 
             vk::AccelerationStructureInstanceKHR tlas_instance{
                 .transform = vk_matrix(final_transform),
-                .instanceCustomIndex = model_instance.info.first_blas_id + mesh_instance.mesh_index,
+                .instanceCustomIndex = blases[blas_idx].geometry_offset,
                 .mask = 0xFF,
                 .instanceShaderBindingTableRecordOffset = 0,
                 .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
-                .accelerationStructureReference = blases[model_instance.info.first_blas_id +
-                                                         mesh_instance.mesh_index].get_device_address()
+                .accelerationStructureReference = blases[blas_idx].as.get_device_address()
             };
-            instances.push_back(tlas_instance);
+            tlas_instances.push_back(tlas_instance);
         }
     }
 
-    if (instances.empty()) return;
+    if (tlas_instances.empty()) return;
 
     auto as_props = ctx.get_adapter().get().getProperties2<
         vk::PhysicalDeviceProperties2,
@@ -202,7 +209,7 @@ void Scene::build_tlas(const Context& ctx) {
     >().get<vk::PhysicalDeviceAccelerationStructurePropertiesKHR>();
 
     auto instance_buffer = BufferBuilder()
-                           .size(instances.size() * sizeof(vk::AccelerationStructureInstanceKHR))
+                           .size(tlas_instances.size() * sizeof(vk::AccelerationStructureInstanceKHR))
                            .usage(
                                vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR |
                                vk::BufferUsageFlagBits::eShaderDeviceAddress)
@@ -211,8 +218,8 @@ void Scene::build_tlas(const Context& ctx) {
                            .build(ctx.get_allocator());
 
     memcpy(instance_buffer.mapped_ptr(),
-           instances.data(),
-           instances.size() * sizeof(vk::AccelerationStructureInstanceKHR));
+           tlas_instances.data(),
+           tlas_instances.size() * sizeof(vk::AccelerationStructureInstanceKHR));
 
     auto instance_device_address = instance_buffer.get_device_address(ctx.get_device());
 
@@ -236,18 +243,18 @@ void Scene::build_tlas(const Context& ctx) {
     };
 
     vk::AccelerationStructureBuildRangeInfoKHR range_info{
-        .primitiveCount = static_cast<uint32_t>(instances.size()),
+        .primitiveCount = static_cast<uint32_t>(tlas_instances.size()),
         .primitiveOffset = 0,
         .firstVertex = 0,
         .transformOffset = 0,
     };
 
-    std::vector max_primitives{range_info.primitiveCount};
+    std::vector max_counts{range_info.primitiveCount};
 
     auto sizes_info = ctx.get_device().get().getAccelerationStructureBuildSizesKHR(
         vk::AccelerationStructureBuildTypeKHR::eDevice,
         geometry_info,
-        max_primitives);
+        max_counts);
 
     tlas = AccelerationStructure(
         ctx.get_device(),
@@ -263,10 +270,8 @@ void Scene::build_tlas(const Context& ctx) {
                           .min_alignment(as_props.minAccelerationStructureScratchOffsetAlignment)
                           .build(ctx.get_allocator());
 
-    auto scratch_buffer_device_address = scratch_buffer.get_device_address(ctx.get_device());
-
     geometry_info.dstAccelerationStructure = tlas.get_handle();
-    geometry_info.scratchData = scratch_buffer_device_address;
+    geometry_info.scratchData = scratch_buffer.get_device_address(ctx.get_device());
 
     auto single_time_encoder = SingleTimeEncoder(ctx.get_device());
 
@@ -285,6 +290,5 @@ void Scene::build_tlas(const Context& ctx) {
     };
 
     single_time_encoder.get_cmd().pipelineBarrier2(dependency_info);
-
     single_time_encoder.submit(ctx.get_device());
 }

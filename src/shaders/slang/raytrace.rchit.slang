@@ -1,22 +1,19 @@
 import common;
 
-[[vk::binding(3, 0)]]
-StructuredBuffer<Mesh, ScalarDataLayout> meshes;
+[[vk::push_constant]]
+SceneAddresses scene;
 
 [shader("closesthit")]
 void main(inout Payload payload, in BuiltInTriangleIntersectionAttributes attr) {
-    uint meshID = InstanceID(); // (variable from tlas struct)
-    uint primID = PrimitiveIndex(); // (triangle id from blas)
+    Geometry geometry = scene.geometries[InstanceID() + GeometryIndex()];
 
-    Mesh mesh = meshes[meshID];
+    uint32_t base = geometry.index_offset + PrimitiveIndex() * 3;
 
-    uint32_t i0 = mesh.indices[primID * 3 + 0];
-    uint32_t i1 = mesh.indices[primID * 3 + 1];
-    uint32_t i2 = mesh.indices[primID * 3 + 2];
+    Vertex v0 = scene.vertices[geometry.vertex_offset + scene.indices[base + 0]];
+    Vertex v1 = scene.vertices[geometry.vertex_offset + scene.indices[base + 1]];
+    Vertex v2 = scene.vertices[geometry.vertex_offset + scene.indices[base + 2]];
 
-    Vertex v0 = mesh.vertices[i0];
-    Vertex v1 = mesh.vertices[i1];
-    Vertex v2 = mesh.vertices[i2];
+    Material material = scene.material[geometry.material_index];
 
     float3 bary = float3(
         1.0 - attr.barycentrics.x - attr.barycentrics.y,

@@ -24,8 +24,17 @@ struct Material {
     float3 emissive_factor;
 };
 
-struct Mesh {
+struct Geometry {
+    uint32_t vertex_offset;
+    uint32_t vertex_count;
+    uint32_t index_offset;
+    uint32_t index_count;
+    uint32_t material_index;
+};
+
+struct SceneAddresses {
     Vertex* vertices;
     uint32_t* indices;
     Material* material;
+    Geometry* geometries;
 };
