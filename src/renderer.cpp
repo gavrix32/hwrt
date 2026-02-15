@@ -46,24 +46,15 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
 
     // Ray Trace Image
 
-    auto queue_family_index_u32 = ctx.get_device().get_queue_family_index();
-
-    vk::ImageCreateInfo rt_image_create_info{
-        .imageType = vk::ImageType::e2D,
-        .format = srgb_to_unorm(swapchain->get_surface_format().format),
-        .extent = vk::Extent3D{swapchain->get_extent().width, swapchain->get_extent().height, 1},
-        .mipLevels = 1,
-        .arrayLayers = 1,
-        .samples = vk::SampleCountFlagBits::e1,
-        .tiling = vk::ImageTiling::eOptimal,
-        .usage = vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc,
-        .sharingMode = vk::SharingMode::eExclusive,
-        .queueFamilyIndexCount = 1,
-        .pQueueFamilyIndices = &queue_family_index_u32,
-        .initialLayout = vk::ImageLayout::eUndefined,
-    };
-
-    auto rt_image = Image(rt_image_create_info, ctx.get_allocator());
+    auto rt_image = ImageBuilder()
+                    .type(vk::ImageType::e2D)
+                    .format(srgb_to_unorm(swapchain->get_surface_format().format))
+                    .size(swapchain->get_extent().width, swapchain->get_extent().height)
+                    .mip_levels(1)
+                    .layers(1)
+                    .samples(vk::SampleCountFlagBits::e1)
+                    .usage(vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc)
+                    .build(ctx.get_allocator());
 
     vk::ImageViewCreateInfo rt_image_view_create_info{
         .image = rt_image.get(),
@@ -107,14 +98,6 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
         .stageFlags = vk::ShaderStageFlagBits::eAll,
     };
     bindings.push_back(uniform_binding);
-
-    vk::DescriptorSetLayoutBinding gpu_mesh_binding{
-        .binding = 3,
-        .descriptorType = vk::DescriptorType::eStorageBuffer,
-        .descriptorCount = 1,
-        .stageFlags = vk::ShaderStageFlagBits::eAll,
-    };
-    bindings.push_back(gpu_mesh_binding);
 
     vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_create_info{
         .flags = vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptor,
@@ -298,6 +281,22 @@ void Renderer::draw_frame(const Scene& scene) {
         .pBufferInfo = &descriptor_uniform_info,
     };
 
+    // std::vector<vk::DescriptorImageInfo> image_infos(scene.get_images().size());
+    // for (size_t i = 0; i < scene.get_images().size(); ++i) {
+    //     image_infos[i] = {
+    //         .sampler = linear_sampler,
+    //         .imageView = gpu_textures[i].get_view(),
+    //         .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+    //     };
+    // }
+
+    // vk::WriteDescriptorSet write_images{
+    //     .dstBinding = 3,
+    //     .descriptorCount = static_cast<uint32_t>(scene.get_images().size()),
+    //     .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+    //     .pImageInfo = image_infos.data(),
+    // };
+
     std::vector writes{write_as, write_image, write_uniform};
 
     vk::PushConstantsInfo push_constants_info{
@@ -395,24 +394,15 @@ void Renderer::recreate() {
 
     swapchain = std::make_unique<Swapchain>(ctx.get_adapter(), ctx.get_device(), Window::get(), res->surface);
 
-    auto queue_family_index_u32 = ctx.get_device().get_queue_family_index();
-
-    const vk::ImageCreateInfo rt_image_create_info{
-        .imageType = vk::ImageType::e2D,
-        .format = srgb_to_unorm(swapchain->get_surface_format().format),
-        .extent = vk::Extent3D{swapchain->get_extent().width, swapchain->get_extent().height, 1},
-        .mipLevels = 1,
-        .arrayLayers = 1,
-        .samples = vk::SampleCountFlagBits::e1,
-        .tiling = vk::ImageTiling::eOptimal,
-        .usage = vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc,
-        .sharingMode = vk::SharingMode::eExclusive,
-        .queueFamilyIndexCount = 1,
-        .pQueueFamilyIndices = &queue_family_index_u32,
-        .initialLayout = vk::ImageLayout::eUndefined,
-    };
-
-    res->rt_image = Image(rt_image_create_info, ctx.get_allocator());
+    res->rt_image = ImageBuilder()
+                    .type(vk::ImageType::e2D)
+                    .format(srgb_to_unorm(swapchain->get_surface_format().format))
+                    .size(swapchain->get_extent().width, swapchain->get_extent().height)
+                    .mip_levels(1)
+                    .layers(1)
+                    .samples(vk::SampleCountFlagBits::e1)
+                    .usage(vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc)
+                    .build(ctx.get_allocator());
 
     const auto single_time_encoder = SingleTimeEncoder(ctx.get_device());
 

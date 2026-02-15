@@ -28,17 +28,17 @@ struct Node {
 
 // TODO: alpha_cutoff, alpha_mode
 struct Material {
-    uint32_t albedo_index;
+    uint32_t albedo_index = UINT32_MAX;
     glm::vec4 base_color_factor;
 
-    uint32_t normal_index;
+    uint32_t normal_index = UINT32_MAX;
     float normal_scale;
 
-    uint32_t metallic_roughness_index;
+    uint32_t metallic_roughness_index = UINT32_MAX;
     float metallic_factor;
     float roughness_factor;
 
-    uint32_t emissive_index;
+    uint32_t emissive_index = UINT32_MAX;
     glm::vec3 emissive_factor;
 };
 

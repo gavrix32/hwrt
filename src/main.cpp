@@ -56,7 +56,7 @@ int main() {
 
         Scene scene;
         scene.set_camera(camera);
-        scene.add_instance(model, glm::mat4(1.0f));
+        scene.add_instance(model, glm::mat4(1.0f), ctx);
 
         std::default_random_engine generator;
         std::uniform_real_distribution distribution(0.0f, 360.0f);

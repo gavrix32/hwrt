@@ -12,7 +12,7 @@ vk::TransformMatrixKHR vk_matrix(const glm::mat4& m) {
     return out;
 }
 
-void Scene::add_instance(const std::shared_ptr<Model>& model, const glm::mat4& transform) {
+void Scene::add_instance(const std::shared_ptr<Model>& model, const glm::mat4& transform, const Context& ctx) {
     const ModelInstance instance{
         .model = model,
         .transform = transform,
@@ -38,7 +38,28 @@ void Scene::add_instance(const std::shared_ptr<Model>& model, const glm::mat4& t
         }
         blases.push_back(std::move(blas));
     }
-    materials.insert(materials.end(), model->materials.begin(), model->materials.end());
+    for (const auto& material : model->materials) {
+        Material adjusted = material;
+        if (adjusted.albedo_index != UINT32_MAX) adjusted.albedo_index += images.size();
+        if (adjusted.normal_index != UINT32_MAX) adjusted.normal_index += images.size();
+        if (adjusted.metallic_roughness_index != UINT32_MAX) adjusted.metallic_roughness_index += images.size();
+        if (adjusted.emissive_index != UINT32_MAX) adjusted.emissive_index += images.size();
+        materials.push_back(adjusted);
+    }
+    for (const auto& texture : model->textures) {
+        auto image = ImageBuilder()
+                     .type(vk::ImageType::e2D)
+                     .format(vk::Format::eR8G8B8A8Srgb) // TODO: Unorm для не albedo
+                     .size(texture.width, texture.height)
+                     .mip_levels(1)
+                     .layers(1)
+                     .samples(vk::SampleCountFlagBits::e1)
+                     .usage(vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled)
+                     .build(ctx.get_allocator());
+
+        image.upload_data(texture.data, texture.width * texture.height * 4, ctx.get_device());
+        images.push_back(std::move(image));
+    }
     model_instances.push_back(instance);
 }
 

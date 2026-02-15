@@ -38,6 +38,7 @@ add_executable(hwrt
         src/vulkan/encoder.cpp
         src/vulkan/pipeline.cpp
         src/vulkan/acceleration.cpp
+        src/vulkan/sampler.cpp
         src/context.cpp
         src/frame.cpp
         src/input.cpp

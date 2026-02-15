@@ -3,7 +3,9 @@
 #include "camera.h"
 #include "context.h"
 #include "model.h"
+
 #include "vulkan/acceleration.h"
+#include "vulkan/image.h"
 
 struct ModelInstance {
     std::shared_ptr<Model> model;
@@ -47,7 +49,11 @@ class Scene {
     Buffer material_buffer;
     Buffer geometry_buffer;
 
-    SceneAddresses scene_addresses;
+    std::vector<Image> images;
+    // Sampler linear_sampler;
+    // vk::raii::DescriptorSet bindless_texture_set;
+
+    SceneAddresses scene_addresses{};
 
     std::vector<Blas> blases;
     AccelerationStructure tlas;
@@ -63,13 +69,17 @@ public:
         return camera;
     }
 
-    void add_instance(const std::shared_ptr<Model>& model, const glm::mat4& transform);
+    void add_instance(const std::shared_ptr<Model>& model, const glm::mat4& transform, const Context& ctx);
 
     void build_blases(const Context& ctx);
     void build_tlas(const Context& ctx);
 
     [[nodiscard]] const AccelerationStructure& get_tlas() const {
         return tlas;
+    }
+
+    [[nodiscard]] const std::vector<Image>& get_images() const {
+        return images;
     }
 
     [[nodiscard]] const SceneAddresses& get_scene_address() const {
