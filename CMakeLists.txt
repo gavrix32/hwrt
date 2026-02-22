@@ -5,12 +5,12 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 find_package(Vulkan REQUIRED)
-find_package(glfw3 REQUIRED)
 
 add_subdirectory(external/spdlog)
 add_subdirectory(external/vma)
 add_subdirectory(external/glm)
 add_subdirectory(external/fastgltf)
+add_subdirectory(external/glfw)
 
 #if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 #    add_compile_options(-fsanitize=address,undefined -g -fno-omit-frame-pointer)
