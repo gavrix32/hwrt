@@ -5,8 +5,8 @@
 #include <iostream>
 #include <fstream>
 
-#include "glm/gtc/type_ptr.hpp"
-#include "spdlog/spdlog.h"
+#include <glm/gtc/type_ptr.hpp>
+#include <spdlog/spdlog.h>
 
 #include "vulkan/pipeline.h"
 #include "vulkan/utils.h"

@@ -1,8 +1,9 @@
 #pragma once
 
 #include "texture.h"
-#include "fastgltf/types.hpp"
-#include "glm/glm.hpp"
+
+#include <fastgltf/types.hpp>
+#include <glm/glm.hpp>
 
 struct Vertex {
     glm::vec3 position;

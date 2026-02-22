@@ -2,7 +2,7 @@
 
 #include <vulkan/vulkan_raii.hpp>
 
-#include "glm/glm.hpp"
+#include <glm/glm.hpp>
 
 #include "vulkan/buffer.h"
 

@@ -1,7 +1,8 @@
 #include "scene.h"
 
+#include <spdlog/spdlog.h>
+
 #include "context.h"
-#include "spdlog/spdlog.h"
 #include "vulkan/encoder.h"
 
 // GLM 4x4 column-major to Vulkan 3x4 row-major matrix

@@ -1,9 +1,10 @@
 #include "model.h"
 
-#include "fastgltf/tools.hpp"
-#include "fastgltf/glm_element_traits.hpp"
-#include "glm/gtc/type_ptr.hpp"
-#include "spdlog/spdlog.h"
+#include <fastgltf/tools.hpp>
+#include <fastgltf/glm_element_traits.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <spdlog/spdlog.h>
+
 #include "vulkan/buffer.h"
 
 #define STB_IMAGE_IMPLEMENTATION
