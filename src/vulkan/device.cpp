@@ -52,6 +52,9 @@ Device::Device(const Adapter& adapter, const std::vector<const char*>& required_
 
     features_chain.get<vk::PhysicalDeviceVulkan12Features>().scalarBlockLayout = vk::True;
     features_chain.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress = vk::True;
+    features_chain.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingSampledImageUpdateAfterBind = vk::True;
+    features_chain.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingPartiallyBound = vk::True;
+    features_chain.get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray = vk::True;
     features_chain.get<vk::PhysicalDeviceVulkan13Features>().synchronization2 = vk::True;
     features_chain.get<vk::PhysicalDeviceVulkan14Features>().pushDescriptor = vk::True;
     features_chain.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure = vk::True;

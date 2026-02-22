@@ -7,16 +7,11 @@
 
 std::string_view get_physical_device_type_name(const vk::PhysicalDeviceType type) {
     switch (type) {
-        case vk::PhysicalDeviceType::eDiscreteGpu:
-            return "discrete";
-        case vk::PhysicalDeviceType::eIntegratedGpu:
-            return "integrated";
-        case vk::PhysicalDeviceType::eVirtualGpu:
-            return "virtual";
-        case vk::PhysicalDeviceType::eCpu:
-            return "cpu";
-        default:
-            return "unknown";
+        case vk::PhysicalDeviceType::eDiscreteGpu: return "discrete";
+        case vk::PhysicalDeviceType::eIntegratedGpu: return "integrated";
+        case vk::PhysicalDeviceType::eVirtualGpu: return "virtual";
+        case vk::PhysicalDeviceType::eCpu: return "cpu";
+        default: return "unknown";
     }
 }
 

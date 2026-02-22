@@ -58,6 +58,8 @@ void Scene::add_instance(const std::shared_ptr<Model>& model, const glm::mat4& t
                      .build(ctx.get_allocator());
 
         image.upload_data(texture.data, texture.width * texture.height * 4, ctx.get_device());
+
+        image_views.emplace_back(ctx.get_device(), image, vk::ImageViewType::e2D, vk::ImageAspectFlagBits::eColor, 0, 1);
         images.push_back(std::move(image));
     }
     model_instances.push_back(instance);
@@ -312,4 +314,53 @@ void Scene::build_tlas(const Context& ctx) {
 
     single_time_encoder.get_cmd().pipelineBarrier2(dependency_info);
     single_time_encoder.submit(ctx.get_device());
+}
+
+void Scene::build_descriptor_set(const Context& ctx) {
+    spdlog::info("Building descriptor set...");
+
+    if (MAX_TEXTURES < images.size()) {
+        spdlog::error("MAX_TEXTURES is {} while the scene have {} textures", MAX_TEXTURES, images.size());
+    }
+
+    vk::DescriptorPoolSize pool_size{
+        .type = vk::DescriptorType::eCombinedImageSampler,
+        .descriptorCount = MAX_TEXTURES
+    };
+
+    const vk::DescriptorPoolCreateInfo pool_info{
+        .flags = vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind | vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+        .maxSets = 1,
+        .poolSizeCount = 1,
+        .pPoolSizes = &pool_size,
+    };
+
+    descriptor_pool = ctx.get_device().get().createDescriptorPool(pool_info);
+
+    const vk::DescriptorSetAllocateInfo alloc_info{
+        .descriptorPool = descriptor_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &*ctx.get_bindless_layout(),
+    };
+
+    descriptor_set = std::move(ctx.get_device().get().allocateDescriptorSets(alloc_info)[0]);
+
+    for (uint32_t i = 0; i < images.size(); ++i) {
+        vk::DescriptorImageInfo image_info{
+            .sampler = ctx.get_linear_sampler().get(),
+            .imageView = image_views[i].get(),
+            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+        };
+
+        vk::WriteDescriptorSet write_set{
+            .dstSet = descriptor_set,
+            .dstBinding = 0,
+            .dstArrayElement = i,
+            .descriptorCount = 1,
+            .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+            .pImageInfo = &image_info
+        };
+
+        ctx.get_device().get().updateDescriptorSets(write_set, {});
+    }
 }

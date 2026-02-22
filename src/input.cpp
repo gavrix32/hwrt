@@ -61,6 +61,9 @@ double Input::get_mouse_scroll() {
 
 void Input::set_cursor_grab(const bool grab) {
     glfwSetInputMode(window_handle, GLFW_CURSOR, grab ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+    if (grab) {
+        first_mouse_input = true;
+    }
 }
 
 void Input::key_callback(GLFWwindow* /*window*/, const int key, int /*scancode*/, const int action, int /*mods*/) {
@@ -84,6 +87,11 @@ void Input::cursor_position_callback(GLFWwindow* /*window*/, const double xpos, 
         static_cast<float>(xpos),
         static_cast<float>(ypos),
     };
+
+    if (first_mouse_input) {
+        mouse_pos = new_pos;
+        first_mouse_input = false;
+    }
 
     mouse_delta += new_pos - mouse_pos;
     mouse_pos = new_pos;

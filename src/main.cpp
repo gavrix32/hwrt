@@ -49,7 +49,7 @@ int main() {
 
         AssetManager asset_manager;
 
-        auto model = asset_manager.get_model("../assets/models/ABeautifulGame.glb");
+        const auto model = asset_manager.get_model("../assets/models/ABeautifulGame.glb");
 
         auto camera = Camera();
         camera.set_pos(glm::vec3(0.0f, 0.0f, 1.0f));
@@ -83,6 +83,7 @@ int main() {
         // }
         scene.build_blases(ctx);
         scene.build_tlas(ctx);
+        scene.build_descriptor_set(ctx);
 
         spdlog::info("Loaded scene with {} instances", pow(size, 3));
 

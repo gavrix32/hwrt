@@ -16,6 +16,7 @@ class Input {
 
     inline static glm::vec2 mouse_pos;
     inline static glm::vec2 mouse_delta;
+    inline static bool first_mouse_input;
 
     inline static double scroll;
 

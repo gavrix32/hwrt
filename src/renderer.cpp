@@ -71,9 +71,9 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
 
     single_time_encoder.submit(ctx.get_device());
 
-    // Push Descriptors & Pipeline Layout
+    // Push Descriptors
 
-    std::vector<vk::DescriptorSetLayoutBinding> bindings;
+    std::vector<vk::DescriptorSetLayoutBinding> push_bindings;
 
     vk::DescriptorSetLayoutBinding as_binding{
         .binding = 0,
@@ -81,15 +81,15 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eAll,
     };
-    bindings.push_back(as_binding);
+    push_bindings.push_back(as_binding);
 
-    vk::DescriptorSetLayoutBinding image_binding{
+    vk::DescriptorSetLayoutBinding rt_image_binding{
         .binding = 1,
         .descriptorType = vk::DescriptorType::eStorageImage,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eAll,
     };
-    bindings.push_back(image_binding);
+    push_bindings.push_back(rt_image_binding);
 
     vk::DescriptorSetLayoutBinding uniform_binding{
         .binding = 2,
@@ -97,15 +97,18 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eAll,
     };
-    bindings.push_back(uniform_binding);
+    push_bindings.push_back(uniform_binding);
 
-    vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_create_info{
+    // Descriptor set layouts
+
+    vk::DescriptorSetLayoutCreateInfo push_descriptor_set_layout_create_info{
         .flags = vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptor,
-        .bindingCount = static_cast<uint32_t>(bindings.size()),
-        .pBindings = bindings.data(),
+        .bindingCount = static_cast<uint32_t>(push_bindings.size()),
+        .pBindings = push_bindings.data(),
     };
+    auto push_descriptor_set_layout = ctx.get_device().get().createDescriptorSetLayout(push_descriptor_set_layout_create_info);
 
-    auto descriptor_set_layout = ctx.get_device().get().createDescriptorSetLayout(descriptor_set_layout_create_info);
+    // Push constant
 
     vk::PushConstantRange push_constant_range{
         .stageFlags = vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR,
@@ -120,7 +123,8 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
                        .rmiss("../src/shaders/spirv/raytrace.rmiss.spv")
                        .rchit("../src/shaders/spirv/raytrace.rchit.spv")
                        .ray_depth(1)
-                       .descriptor_set_layout(descriptor_set_layout)
+                       .descriptor_set_layout(push_descriptor_set_layout)
+                       .descriptor_set_layout(ctx.get_bindless_layout())
                        .push_constant_range(push_constant_range)
                        .build(ctx.get_device());
 
@@ -202,7 +206,7 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
         .rgen_region = rgen_region,
         .rmiss_region = rmiss_region,
         .rchit_region = rchit_region,
-        .descriptor_set_layout = std::move(descriptor_set_layout),
+        .descriptor_set_layout = std::move(push_descriptor_set_layout),
         .rt_pipeline = std::move(rt_pipeline),
         .rt_image = std::move(rt_image),
         .rt_image_view = std::move(rt_image_view),
@@ -281,22 +285,6 @@ void Renderer::draw_frame(const Scene& scene) {
         .pBufferInfo = &descriptor_uniform_info,
     };
 
-    // std::vector<vk::DescriptorImageInfo> image_infos(scene.get_images().size());
-    // for (size_t i = 0; i < scene.get_images().size(); ++i) {
-    //     image_infos[i] = {
-    //         .sampler = linear_sampler,
-    //         .imageView = gpu_textures[i].get_view(),
-    //         .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
-    //     };
-    // }
-
-    // vk::WriteDescriptorSet write_images{
-    //     .dstBinding = 3,
-    //     .descriptorCount = static_cast<uint32_t>(scene.get_images().size()),
-    //     .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-    //     .pImageInfo = image_infos.data(),
-    // };
-
     std::vector writes{write_as, write_image, write_uniform};
 
     vk::PushConstantsInfo push_constants_info{
@@ -307,8 +295,17 @@ void Renderer::draw_frame(const Scene& scene) {
         .pValues = &scene.get_scene_address(),
     };
 
+    vk::BindDescriptorSetsInfo bind_sets_info{
+        .stageFlags = vk::ShaderStageFlagBits::eAll,
+        .layout = res->rt_pipeline.get_layout(),
+        .firstSet = 1,
+        .descriptorSetCount = 1,
+        .pDescriptorSets = &*scene.get_descriptor_set()
+    };
+
     cmd.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, res->rt_pipeline.get());
     cmd.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, res->rt_pipeline.get_layout(), 0, writes);
+    cmd.bindDescriptorSets2(bind_sets_info);
     cmd.pushConstants2(push_constants_info);
 
     cmd.traceRaysKHR(res->rgen_region,

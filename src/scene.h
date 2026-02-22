@@ -50,8 +50,10 @@ class Scene {
     Buffer geometry_buffer;
 
     std::vector<Image> images;
-    // Sampler linear_sampler;
-    // vk::raii::DescriptorSet bindless_texture_set;
+    std::vector<ImageView> image_views;
+
+    vk::raii::DescriptorPool descriptor_pool = nullptr;
+    vk::raii::DescriptorSet descriptor_set = nullptr;
 
     SceneAddresses scene_addresses{};
 
@@ -73,6 +75,7 @@ public:
 
     void build_blases(const Context& ctx);
     void build_tlas(const Context& ctx);
+    void build_descriptor_set(const Context& ctx);
 
     [[nodiscard]] const AccelerationStructure& get_tlas() const {
         return tlas;
@@ -84,5 +87,9 @@ public:
 
     [[nodiscard]] const SceneAddresses& get_scene_address() const {
         return scene_addresses;
+    }
+
+    [[nodiscard]] const vk::raii::DescriptorSet& get_descriptor_set() const {
+        return descriptor_set;
     }
 };

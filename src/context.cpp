@@ -14,21 +14,33 @@ Context::Context(const bool validation)
     : instance(validation),
       adapter(instance, device_extensions),
       device(adapter, device_extensions),
-      allocator(instance, adapter, device) {
-}
+      allocator(instance, adapter, device),
+      linear_sampler(device, vk::Filter::eLinear, vk::Filter::eLinear),
+      bindless_layout(nullptr) {
+    std::vector<vk::DescriptorSetLayoutBinding> descriptor_bindings;
 
-const Instance& Context::get_instance() const {
-    return instance;
-}
+    constexpr vk::DescriptorSetLayoutBinding bindless_binding{
+        .binding = 0,
+        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+        .descriptorCount = MAX_TEXTURES,
+        .stageFlags = vk::ShaderStageFlagBits::eAll,
+    };
+    descriptor_bindings.push_back(bindless_binding);
 
-const Adapter& Context::get_adapter() const {
-    return adapter;
-}
+    auto binding_flags =
+        vk::DescriptorBindingFlagBits::ePartiallyBound |
+        vk::DescriptorBindingFlagBits::eUpdateAfterBind;
 
-const Device& Context::get_device() const {
-    return device;
-}
+    vk::DescriptorSetLayoutBindingFlagsCreateInfo flags_info = {
+        .bindingCount = 1,
+        .pBindingFlags = &binding_flags
+    };
 
-const Allocator& Context::get_allocator() const {
-    return allocator;
+    const vk::DescriptorSetLayoutCreateInfo layout_create_info{
+        .pNext = &flags_info,
+        .flags = vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool,
+        .bindingCount = static_cast<uint32_t>(descriptor_bindings.size()),
+        .pBindings = descriptor_bindings.data(),
+    };
+    bindless_layout = device.get().createDescriptorSetLayout(layout_create_info);
 }
