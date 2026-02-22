@@ -50,6 +50,32 @@ add_executable(hwrt
         src/model.cpp
 )
 
+# --- ImGui Setup ---
+set(IMGUI_DIR "${CMAKE_SOURCE_DIR}/external/imgui")
+set(IMGUI_SOURCES
+        ${IMGUI_DIR}/imgui.cpp
+        ${IMGUI_DIR}/imgui_demo.cpp
+        ${IMGUI_DIR}/imgui_draw.cpp
+        ${IMGUI_DIR}/imgui_tables.cpp
+        ${IMGUI_DIR}/imgui_widgets.cpp
+)
+set(IMGUI_BACKENDS
+        ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
+        ${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp
+)
+
+add_library(imgui STATIC ${IMGUI_SOURCES} ${IMGUI_BACKENDS})
+
+target_include_directories(imgui PUBLIC
+        ${IMGUI_DIR}
+        ${IMGUI_DIR}/backends
+)
+
+target_link_libraries(imgui PRIVATE Vulkan::Vulkan glfw)
+
+# --- STB ---
+target_include_directories(hwrt PRIVATE external/stb)
+
 target_link_libraries(hwrt PRIVATE
         Vulkan::Vulkan
         glfw
@@ -57,6 +83,7 @@ target_link_libraries(hwrt PRIVATE
         GPUOpen::VulkanMemoryAllocator
         glm::glm
         fastgltf::fastgltf
+        imgui
 )
 
 target_compile_definitions(hwrt PRIVATE
@@ -64,5 +91,3 @@ target_compile_definitions(hwrt PRIVATE
         GLM_FORCE_RADIANS
         GLM_ENABLE_EXPERIMENTAL
 )
-
-target_include_directories(hwrt PRIVATE external/stb)
