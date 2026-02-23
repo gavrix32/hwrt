@@ -35,7 +35,7 @@ public:
                    VmaMemoryUsage memory_usage,
                    VmaAllocationCreateFlags allocation_flags);
 
-    explicit Image(vk::Image handle);
+    explicit Image(vk::Image handle, vk::Format format);
 
     void upload_data(const void* data, vk::DeviceSize size, const Device& device);
 

@@ -11,20 +11,8 @@
 #include "vulkan/pipeline.h"
 #include "vulkan/utils.h"
 #include "camera.h"
+#include "gui.h"
 #include "window.h"
-
-// TODO: is it necessary?
-vk::Format srgb_to_unorm(const vk::Format format) {
-    switch (format) {
-        case vk::Format::eR8Srgb: return vk::Format::eR8Unorm;
-        case vk::Format::eR8G8Srgb: return vk::Format::eR8G8Unorm;
-        case vk::Format::eR8G8B8Srgb: return vk::Format::eR8G8B8Unorm;
-        case vk::Format::eB8G8R8Srgb: return vk::Format::eB8G8R8Unorm;
-        case vk::Format::eR8G8B8A8Srgb: return vk::Format::eR8G8B8A8Unorm;
-        case vk::Format::eB8G8R8A8Srgb: return vk::Format::eB8G8R8A8Unorm;
-        default: return format;
-    }
-}
 
 Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
     SCOPED_TIMER();
@@ -48,7 +36,7 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
 
     auto rt_image = ImageBuilder()
                     .type(vk::ImageType::e2D)
-                    .format(srgb_to_unorm(swapchain->get_surface_format().format))
+                    .format(swapchain->get_format())
                     .size(swapchain->get_extent().width, swapchain->get_extent().height)
                     .mip_levels(1)
                     .layers(1)
@@ -59,7 +47,7 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
     vk::ImageViewCreateInfo rt_image_view_create_info{
         .image = rt_image.get(),
         .viewType = vk::ImageViewType::e2D,
-        .format = srgb_to_unorm(swapchain->get_surface_format().format),
+        .format = swapchain->get_format(),
         .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
     };
     auto rt_image_view = ctx.get_device().get().createImageView(rt_image_view_create_info);
@@ -340,6 +328,32 @@ void Renderer::draw_frame(const Scene& scene) {
                   copy_region);
 
     swapchain->get_images()[image_index].transition_layout(cmd,
+                                                           vk::ImageLayout::eColorAttachmentOptimal,
+                                                           vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+                                                           vk::AccessFlagBits2::eColorAttachmentRead |
+                                                           vk::AccessFlagBits2::eColorAttachmentWrite);
+
+    vk::RenderingAttachmentInfo attachment_info{
+        .imageView = swapchain->get_image_views()[image_index].get(),
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eLoad,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+    };
+
+    vk::RenderingInfo rendering_info{
+        .renderArea = {{0, 0}, swapchain->get_extent()},
+        .layerCount = 1,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &attachment_info,
+    };
+
+    cmd.beginRendering(rendering_info);
+
+    Gui::draw(cmd);
+
+    cmd.endRendering();
+
+    swapchain->get_images()[image_index].transition_layout(cmd,
                                                            vk::ImageLayout::ePresentSrcKHR,
                                                            vk::PipelineStageFlagBits2::eBottomOfPipe,
                                                            vk::AccessFlagBits2::eNone);
@@ -393,7 +407,7 @@ void Renderer::recreate() {
 
     res->rt_image = ImageBuilder()
                     .type(vk::ImageType::e2D)
-                    .format(srgb_to_unorm(swapchain->get_surface_format().format))
+                    .format(swapchain->get_format())
                     .size(swapchain->get_extent().width, swapchain->get_extent().height)
                     .mip_levels(1)
                     .layers(1)
@@ -413,20 +427,8 @@ void Renderer::recreate() {
     const vk::ImageViewCreateInfo rt_image_view_create_info{
         .image = res->rt_image.get(),
         .viewType = vk::ImageViewType::e2D,
-        .format = srgb_to_unorm(swapchain->get_surface_format().format),
+        .format = swapchain->get_format(),
         .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
     };
     res->rt_image_view = ctx.get_device().get().createImageView(rt_image_view_create_info);
-}
-
-Resources& Renderer::get_res() const {
-    return *res;
-}
-
-Encoder& Renderer::get_encoder() const {
-    return *encoder;
-}
-
-FrameManager& Renderer::get_frame_mgr() const {
-    return *frame_mgr;
 }

@@ -55,7 +55,8 @@ Image::Image(const vk::ImageType type,
     handle = image;
 }
 
-Image::Image(const vk::Image handle) : handle(handle), allocator(nullptr) {
+Image::Image(const vk::Image handle, const vk::Format format)
+    : handle(handle), allocator(nullptr), format_(format) {
 }
 
 Image::~Image() {

@@ -26,7 +26,7 @@ vk::Extent2D choose_extent(GLFWwindow* window, const vk::SurfaceCapabilitiesKHR&
 
 vk::SurfaceFormatKHR choose_format(const std::vector<vk::SurfaceFormatKHR>& available_formats) {
     for (const auto& available_format : available_formats) {
-        if (available_format.format == vk::Format::eB8G8R8A8Srgb &&
+        if (available_format.format == vk::Format::eB8G8R8A8Unorm &&
             available_format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
             return available_format;
         }
@@ -58,7 +58,7 @@ Swapchain::Swapchain(const Adapter& adapter, const Device& device,
         .imageColorSpace = format.colorSpace,
         .imageExtent = extent,
         .imageArrayLayers = 1,
-        .imageUsage = vk::ImageUsageFlagBits::eTransferDst,
+        .imageUsage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eColorAttachment,
         .imageSharingMode = vk::SharingMode::eExclusive,
         .preTransform = surface_capabilities.currentTransform,
         .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
@@ -72,22 +72,7 @@ Swapchain::Swapchain(const Adapter& adapter, const Device& device,
 
     images.reserve(image_handles.size());
     for (auto image_handle : image_handles) {
-        images.emplace_back(image_handle);
+        images.emplace_back(image_handle, format.format);
+        image_views.emplace_back(device, images.back(), vk::ImageViewType::e2D, vk::ImageAspectFlagBits::eColor, 0, 1);
     }
-}
-
-vk::Extent2D Swapchain::get_extent() const {
-    return extent;
-}
-
-vk::SurfaceFormatKHR Swapchain::get_surface_format() const {
-    return format;
-}
-
-std::vector<Image>& Swapchain::get_images() {
-    return images;
-}
-
-const vk::raii::SwapchainKHR& Swapchain::get() const {
-    return handle;
 }

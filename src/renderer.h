@@ -39,7 +39,19 @@ public:
     void draw_frame(const Scene& scene);
     void recreate();
 
-    [[nodiscard]] Resources& get_res() const;
-    [[nodiscard]] Encoder& get_encoder() const;
-    [[nodiscard]] FrameManager& get_frame_mgr() const;
+    [[nodiscard]] Resources& get_res() const {
+        return *res;
+    }
+
+    [[nodiscard]] Encoder& get_encoder() const {
+        return *encoder;
+    }
+
+    [[nodiscard]] FrameManager& get_frame_mgr() const {
+        return *frame_mgr;
+    }
+
+    [[nodiscard]] Swapchain& get_swapchain() const {
+        return *swapchain;
+    }
 };

@@ -4,6 +4,8 @@
 
 #include "asset.h"
 #include "context.h"
+#include "gui.h"
+#include "imgui_internal.h"
 #include "input.h"
 #include "renderer.h"
 #include "timer.h"
@@ -13,12 +15,10 @@
 #define WIDTH 1280
 #define HEIGHT 720
 
-// TODO: Abstractions (sbt, image, view, imgui)
 // TODO: Normal logging without macro
 // TODO: Shader hot reloading
 // TODO: Meshoptimizer?
 
-// TODO: textures[NonUniformResourceIndex(materialID)];
 // TODO: Замена для stb image? долго грузит текстуры
 // TODO: Починить инстансинг
 // TODO: Перенести scene storage буферы на GPU
@@ -89,6 +89,8 @@ int main() {
 
         Renderer renderer(ctx);
 
+        Gui::init(ctx, renderer.get_swapchain());
+
         Window::show();
         while (!Window::should_close()) {
             timer.tick();
@@ -127,6 +129,12 @@ int main() {
                 if (Input::key_down(GLFW_KEY_LEFT_SHIFT)) camera.move_y(-s);
             }
 
+            Gui::begin();
+
+            ImGui::ShowDemoWindow();
+
+            Gui::end();
+
             scene.set_camera(camera);
             renderer.draw_frame(scene);
 
@@ -138,6 +146,7 @@ int main() {
             accumulator += delta;
         }
         ctx.get_device().get().waitIdle();
+        Gui::terminate();
     }
     Window::terminate();
 

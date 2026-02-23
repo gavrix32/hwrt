@@ -48,6 +48,7 @@ add_executable(hwrt
         src/scene.cpp
         src/asset.cpp
         src/model.cpp
+        src/gui.cpp
 )
 
 # --- ImGui Setup ---
