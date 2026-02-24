@@ -54,8 +54,19 @@ void main(inout Payload payload, in BuiltInTriangleIntersectionAttributes attr) 
         roughness = material.roughness_factor;
     }
 
+    float3 normal_tex = float3(0.0);
+
+    if (material.normal_index != 0xFFFFFFFF) {
+        float3 raw_normal_tex = textures[NonUniformResourceIndex(material.normal_index)].SampleLevel(uv, 0.0).rgb;
+        normal_tex = raw_normal_tex * 2.0 - 1.0;
+        normal_tex.xy *= material.normal_scale;
+        normal_tex = normalize(normal_tex);
+    } else {
+        normal_tex = float3(0.0, 0.0, 1.0);
+    }
+
     payload.color = albedo;
-    //payload.color = normal * 0.5 + 0.5;
+    //payload.color = normal_tex * 0.5 + 0.5;
     //payload.color = float3(metallic);
 
     payload.color = pow(payload.color, 1.0 / 2.2);

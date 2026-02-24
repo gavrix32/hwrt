@@ -108,6 +108,7 @@ TextureData create_placeholder_texture() {
     tex.height = 2;
     tex.channels = 4;
     tex.data = static_cast<unsigned char*>(malloc(tex.width * tex.height * 4));
+    tex.metadata_flags = TextureData::FlagPlaceholder;
 
     if (tex.data) {
         tex.data[0] = 255;

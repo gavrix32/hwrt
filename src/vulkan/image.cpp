@@ -71,7 +71,8 @@ Image::Image(Image&& other) noexcept
       stage_mask(other.stage_mask),
       access_mask(other.access_mask),
       vma_allocation(other.vma_allocation),
-      allocator(other.allocator) {
+      allocator(other.allocator),
+      metadata_flags(other.metadata_flags) {
     other.handle = nullptr;
     other.vma_allocation = nullptr;
 }
@@ -91,6 +92,7 @@ Image& Image::operator=(Image&& other) noexcept {
     access_mask = other.access_mask;
     vma_allocation = std::exchange(other.vma_allocation, nullptr);
     allocator = other.allocator;
+    metadata_flags = other.metadata_flags;
 
     return *this;
 }

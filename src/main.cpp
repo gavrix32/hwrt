@@ -21,7 +21,8 @@
 
 // TODO: Замена для stb image? долго грузит текстуры
 // TODO: Починить инстансинг
-// TODO: Перенести scene storage буферы на GPU
+// TODO: Перенести scene storage буферы на GPU!!!
+// TODO: И хелпер для staging buffers
 
 #ifdef NDEBUG
 constexpr bool validation = false;

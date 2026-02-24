@@ -16,6 +16,7 @@ Context::Context(const bool validation)
       device(adapter, device_extensions),
       allocator(instance, adapter, device),
       linear_sampler(device, vk::Filter::eLinear, vk::Filter::eLinear),
+      nearest_sampler(device, vk::Filter::eNearest, vk::Filter::eNearest),
       bindless_layout(nullptr) {
     std::vector<vk::DescriptorSetLayoutBinding> descriptor_bindings;
 

@@ -14,6 +14,7 @@ class Context {
     Device device;
     Allocator allocator;
     Sampler linear_sampler;
+    Sampler nearest_sampler;
     vk::raii::DescriptorSetLayout bindless_layout;
 
 public:
@@ -37,6 +38,10 @@ public:
 
     [[nodiscard]] const Sampler& get_linear_sampler() const {
         return linear_sampler;
+    }
+
+    [[nodiscard]] const Sampler& get_nearest_sampler() const {
+        return nearest_sampler;
     }
 
     [[nodiscard]] const vk::raii::DescriptorSetLayout& get_bindless_layout() const {

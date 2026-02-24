@@ -327,6 +327,8 @@ void Renderer::draw_frame(const Scene& scene) {
                   vk::ImageLayout::eTransferDstOptimal,
                   copy_region);
 
+    // --- ImGui ---
+
     swapchain->get_images()[image_index].transition_layout(cmd,
                                                            vk::ImageLayout::eColorAttachmentOptimal,
                                                            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
@@ -352,6 +354,8 @@ void Renderer::draw_frame(const Scene& scene) {
     Gui::draw(cmd);
 
     cmd.endRendering();
+
+    // -------------
 
     swapchain->get_images()[image_index].transition_layout(cmd,
                                                            vk::ImageLayout::ePresentSrcKHR,

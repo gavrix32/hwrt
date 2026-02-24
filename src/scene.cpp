@@ -39,7 +39,13 @@ void Scene::add_instance(const std::shared_ptr<Model>& model, const glm::mat4& t
         }
         blases.push_back(std::move(blas));
     }
+
+    std::vector is_srgb_texture(model->textures.size(), false);
+
     for (const auto& material : model->materials) {
+        if (material.albedo_index != UINT32_MAX) is_srgb_texture[material.albedo_index] = true;
+        if (material.emissive_index != UINT32_MAX) is_srgb_texture[material.emissive_index] = true;
+
         Material adjusted = material;
         if (adjusted.albedo_index != UINT32_MAX) adjusted.albedo_index += images.size();
         if (adjusted.normal_index != UINT32_MAX) adjusted.normal_index += images.size();
@@ -47,10 +53,12 @@ void Scene::add_instance(const std::shared_ptr<Model>& model, const glm::mat4& t
         if (adjusted.emissive_index != UINT32_MAX) adjusted.emissive_index += images.size();
         materials.push_back(adjusted);
     }
-    for (const auto& texture : model->textures) {
+    for (int i = 0; i < model->textures.size(); ++i) {
+        const auto& texture = model->textures[i];
+
         auto image = ImageBuilder()
                      .type(vk::ImageType::e2D)
-                     .format(vk::Format::eR8G8B8A8Srgb) // TODO: Unorm для не albedo
+                     .format(is_srgb_texture[i] ? vk::Format::eR8G8B8A8Srgb : vk::Format::eR8G8B8A8Unorm)
                      .size(texture.width, texture.height)
                      .mip_levels(1)
                      .layers(1)
@@ -59,6 +67,7 @@ void Scene::add_instance(const std::shared_ptr<Model>& model, const glm::mat4& t
                      .build(ctx.get_allocator());
 
         image.upload_data(texture.data, texture.width * texture.height * 4, ctx.get_device());
+        image.metadata_flags = texture.metadata_flags;
 
         image_views.emplace_back(ctx.get_device(), image, vk::ImageViewType::e2D, vk::ImageAspectFlagBits::eColor, 0, 1);
         images.push_back(std::move(image));
@@ -346,22 +355,29 @@ void Scene::build_descriptor_set(const Context& ctx) {
 
     descriptor_set = std::move(ctx.get_device().get().allocateDescriptorSets(alloc_info)[0]);
 
+    std::vector<vk::DescriptorImageInfo> image_infos;
+    std::vector<vk::WriteDescriptorSet> write_sets;
+
+    image_infos.reserve(images.size());
+    write_sets.reserve(images.size());
+
     for (uint32_t i = 0; i < images.size(); ++i) {
-        vk::DescriptorImageInfo image_info{
-            .sampler = ctx.get_linear_sampler().get(),
+        image_infos.emplace_back(vk::DescriptorImageInfo{
+            .sampler = images[i].metadata_flags & Image::FlagPlaceholder
+                           ? ctx.get_nearest_sampler().get()
+                           : ctx.get_linear_sampler().get(),
             .imageView = image_views[i].get(),
             .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
-        };
+        });
 
-        vk::WriteDescriptorSet write_set{
+        write_sets.emplace_back(vk::WriteDescriptorSet{
             .dstSet = descriptor_set,
             .dstBinding = 0,
             .dstArrayElement = i,
             .descriptorCount = 1,
             .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-            .pImageInfo = &image_info
-        };
-
-        ctx.get_device().get().updateDescriptorSets(write_set, {});
+            .pImageInfo = &image_infos[i]
+        });
     }
+    ctx.get_device().get().updateDescriptorSets(write_sets, {});
 }

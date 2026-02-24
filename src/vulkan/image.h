@@ -23,6 +23,9 @@ public:
     uint32_t layers_ = 1;
     vk::Format format_ = vk::Format::eUndefined;
 
+    uint32_t metadata_flags = 0;
+    static constexpr uint32_t FlagPlaceholder = 1 << 0;
+
     explicit Image(vk::ImageType type,
                    vk::Format format,
                    uint32_t width,
