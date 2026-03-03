@@ -1,4 +1,4 @@
-import common;
+#include "common.h"
 
 [[vk::binding(0, 0)]]
 RaytracingAccelerationStructure tlas;

@@ -74,8 +74,7 @@ target_include_directories(imgui PUBLIC
 
 target_link_libraries(imgui PRIVATE Vulkan::Vulkan glfw)
 
-# --- STB ---
-target_include_directories(hwrt PRIVATE external/stb)
+target_include_directories(hwrt PRIVATE src/shaders/slang external/stb)
 
 target_link_libraries(hwrt PRIVATE
         Vulkan::Vulkan

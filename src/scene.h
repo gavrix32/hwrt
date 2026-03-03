@@ -13,20 +13,20 @@ struct ModelInstance {
     uint32_t first_blas;
 };
 
-struct Geometry {
-    uint32_t vertex_offset;
-    uint32_t vertex_count;
-    uint32_t index_offset;
-    uint32_t index_count;
-    uint32_t material_index;
-};
+// struct Geometry {
+//     uint32_t vertex_offset;
+//     uint32_t vertex_count;
+//     uint32_t index_offset;
+//     uint32_t index_count;
+//     uint32_t material_index;
+// };
 
-struct SceneAddresses {
-    uint64_t vertex_address;
-    uint64_t index_address;
-    uint64_t material_address;
-    uint64_t geometry_address;
-};
+// struct SceneAddresses {
+//     uint64_t vertex_address;
+//     uint64_t index_address;
+//     uint64_t material_address;
+//     uint64_t geometry_address;
+// };
 
 struct Blas {
     AccelerationStructure as;
@@ -55,7 +55,7 @@ class Scene {
     vk::raii::DescriptorPool descriptor_pool = nullptr;
     vk::raii::DescriptorSet descriptor_set = nullptr;
 
-    SceneAddresses scene_addresses{};
+    ScenePtrs scene_ptrs{};
 
     std::vector<Blas> blases;
     AccelerationStructure tlas;
@@ -85,8 +85,8 @@ public:
         return images;
     }
 
-    [[nodiscard]] const SceneAddresses& get_scene_address() const {
-        return scene_addresses;
+    [[nodiscard]] const ScenePtrs& get_scene_ptrs() const {
+        return scene_ptrs;
     }
 
     [[nodiscard]] const vk::raii::DescriptorSet& get_descriptor_set() const {

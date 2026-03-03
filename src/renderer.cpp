@@ -101,7 +101,7 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
     vk::PushConstantRange push_constant_range{
         .stageFlags = vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR,
         .offset = 0,
-        .size = sizeof(SceneAddresses)
+        .size = sizeof(PushData)
     };
 
     // Ray Tracing Pipeline
@@ -186,6 +186,20 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
     encoder = std::make_unique<Encoder>(ctx.get_device(), frames_in_flight);
     frame_mgr = std::make_unique<FrameManager>(ctx, frames_in_flight, swapchain->get_images().size());
 
+    RenderSettings render_settings{
+        .debug_channel = DebugChannel::None
+    };
+
+    auto render_settings_buffer = BufferBuilder()
+                                  .size(sizeof(RenderSettings))
+                                  .usage(vk::BufferUsageFlagBits::eStorageBuffer |
+                                         vk::BufferUsageFlagBits::eShaderDeviceAddress)
+                                  .allocation_flags(
+                                      VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT)
+                                  .build(ctx.get_allocator());
+
+    memcpy(render_settings_buffer.mapped_ptr(), &render_settings, sizeof(render_settings));
+
     ctx.get_device().get_queue().waitIdle();
 
     res = std::make_unique<Resources>(Resources{
@@ -198,6 +212,8 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
         .rt_pipeline = std::move(rt_pipeline),
         .rt_image = std::move(rt_image),
         .rt_image_view = std::move(rt_image_view),
+        .render_settings = render_settings,
+        .render_settings_buffer = std::move(render_settings_buffer),
     });
 }
 
@@ -275,12 +291,17 @@ void Renderer::draw_frame(const Scene& scene) {
 
     std::vector writes{write_as, write_image, write_uniform};
 
+    PushData push_data{
+        .scene_ptrs = scene.get_scene_ptrs(),
+        .render_settings = res->render_settings_buffer.get_device_address(ctx.get_device()),
+    };
+
     vk::PushConstantsInfo push_constants_info{
         .layout = res->rt_pipeline.get_layout(),
         .stageFlags = vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR,
         .offset = 0,
-        .size = sizeof(SceneAddresses),
-        .pValues = &scene.get_scene_address(),
+        .size = sizeof(PushData),
+        .pValues = &push_data,
     };
 
     vk::BindDescriptorSetsInfo bind_sets_info{
@@ -409,6 +430,8 @@ void Renderer::recreate() {
 
     swapchain = std::make_unique<Swapchain>(ctx.get_adapter(), ctx.get_device(), Window::get(), res->surface);
 
+    Gui::set_image_count(swapchain->get_image_count());
+
     res->rt_image = ImageBuilder()
                     .type(vk::ImageType::e2D)
                     .format(swapchain->get_format())
@@ -435,4 +458,8 @@ void Renderer::recreate() {
         .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
     };
     res->rt_image_view = ctx.get_device().get().createImageView(rt_image_view_create_info);
+}
+
+void Renderer::update_settings() {
+    memcpy(res->render_settings_buffer.mapped_ptr(), &res->render_settings, sizeof(RenderSettings));
 }

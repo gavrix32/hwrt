@@ -1,4 +1,4 @@
-import common;
+#include "common.h"
 
 [shader("miss")]
 void main(inout Payload payload) {

@@ -13,5 +13,6 @@ public:
     static void begin();
     static void end();
     static void draw(const vk::raii::CommandBuffer& cmd);
+    static void set_image_count(uint32_t image_count);
     static void terminate();
 };

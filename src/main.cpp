@@ -23,6 +23,8 @@
 // TODO: Починить инстансинг
 // TODO: Перенести scene storage буферы на GPU!!!
 // TODO: И хелпер для staging buffers
+// TODO: удалить pipeline cache и узнать за сколько он создаётся
+// TODO: alpha_cutoff, alpha_mode
 
 #ifdef NDEBUG
 constexpr bool validation = false;
@@ -133,6 +135,18 @@ int main() {
             Gui::begin();
 
             ImGui::ShowDemoWindow();
+
+            ImGui::Begin("HWRT");
+
+            const char* items[] = {"None", "Texcoord", "Normal Texture", "Geometry Normal", "Geometry Tangent",
+                                   "Geometry Bitangent", "Geometry Tangent W", "Shading Normal", "Base Color", "Alpha",
+                                   "Metallic", "Roughness", "Emissive"};
+            static int current_item_index = 0;
+            if (ImGui::Combo("Debug Channel", &current_item_index, items, IM_ARRAYSIZE(items))) {
+                renderer.get_settings().debug_channel = static_cast<DebugChannel>(current_item_index);
+                renderer.update_settings();
+            }
+            ImGui::End();
 
             Gui::end();
 

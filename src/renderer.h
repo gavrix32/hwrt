@@ -23,6 +23,9 @@ struct Resources {
 
     Image rt_image;
     vk::raii::ImageView rt_image_view;
+
+    RenderSettings render_settings;
+    Buffer render_settings_buffer;
 };
 
 class Renderer {
@@ -38,6 +41,11 @@ public:
 
     void draw_frame(const Scene& scene);
     void recreate();
+    void update_settings();
+
+    [[nodiscard]] RenderSettings& get_settings() const {
+        return res->render_settings;
+    }
 
     [[nodiscard]] Resources& get_res() const {
         return *res;

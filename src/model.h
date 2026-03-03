@@ -5,12 +5,7 @@
 #include <fastgltf/types.hpp>
 #include <glm/glm.hpp>
 
-struct Vertex {
-    glm::vec3 position;
-    glm::vec3 normal;
-    glm::vec4 tangent;
-    glm::vec2 texcoord;
-};
+#include "common.h"
 
 struct Primitive {
     std::vector<Vertex> vertices;
@@ -25,22 +20,6 @@ struct Mesh {
 struct Node {
     uint32_t mesh_index;
     glm::mat4 transform;
-};
-
-// TODO: alpha_cutoff, alpha_mode
-struct Material {
-    uint32_t albedo_index = UINT32_MAX;
-    glm::vec4 base_color_factor;
-
-    uint32_t normal_index = UINT32_MAX;
-    float normal_scale;
-
-    uint32_t metallic_roughness_index = UINT32_MAX;
-    float metallic_factor;
-    float roughness_factor;
-
-    uint32_t emissive_index = UINT32_MAX;
-    glm::vec3 emissive_factor;
 };
 
 class Model {

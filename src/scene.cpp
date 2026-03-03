@@ -120,11 +120,11 @@ void Scene::build_blases(const Context& ctx) {
     auto material_address = material_buffer.get_device_address(ctx.get_device());
     auto geometry_address = geometry_buffer.get_device_address(ctx.get_device());
 
-    scene_addresses = SceneAddresses{
-        vertex_address,
-        index_address,
-        material_address,
-        geometry_address
+    scene_ptrs = ScenePtrs{
+        .vertices = vertex_address,
+        .indices = index_address,
+        .materials = material_address,
+        .geometries = geometry_address
     };
 
     auto as_props = ctx.get_adapter().get().getProperties2<
