@@ -1,5 +1,8 @@
 #include "common.h"
 
+[[vk::push_constant]]
+PushData push_data;
+
 [[vk::binding(0, 0)]]
 RaytracingAccelerationStructure tlas;
 
@@ -58,14 +61,19 @@ void main() {
     Payload payload;
     payload.color = float3(0.0, 0.0, 0.0);
 
-    uint64_t start = clockARB();
-    TraceRay(tlas, RAY_FLAG_FORCE_OPAQUE, 0xFF, 0, 0, 0, ray, payload);
-    uint64_t end = clockARB();
+    RenderSettings render_settings = push_data.render_settings[0];
 
-    float diff = 0.0;
-    diff = float(end - start);
+    if (render_settings.debug_channel == DebugChannel.Heatmap) {
+        uint64_t start = clockARB();
+        TraceRay(tlas, RAY_FLAG_FORCE_OPAQUE, 0xFF, 0, 0, 0, ray, payload);
+        uint64_t end = clockARB();
 
-    //payload.color = inferno_quintic(diff, float2(10000.0, 1000000.0));
+        uint64_t diff_raw = (end > start) ? (end - start) : 0;
+        float diff = float(diff_raw);
+        payload.color = inferno_quintic(diff, float2(10000.0, 100000.0));
+    } else {
+        TraceRay(tlas, RAY_FLAG_FORCE_OPAQUE, 0xFF, 0, 0, 0, ray, payload);
+    }
 
     out_image[int2(launch_id)] = float4(payload.color, 1.0);
 }

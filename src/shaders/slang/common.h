@@ -57,17 +57,20 @@ struct ScenePtrs {
 enum class DebugChannel : uint32_t {
     None = 0,
     Texcoord = 1,
-    NormalTexture = 2,
-    GeometryNormal = 3,
-    GeometryTangent = 4,
-    GeometryBitangent = 5,
-    GeometryTangentW = 6,
-    ShadingNormal = 7,
-    BaseColor = 8,
-    Alpha = 9,
-    Metallic = 10,
-    Roughness = 11,
-    Emissive = 12
+    Depth = 2,
+    Hitpos = 3,
+    NormalTexture = 4,
+    GeometryNormal = 5,
+    GeometryTangent = 6,
+    GeometryBitangent = 7,
+    GeometryTangentW = 8,
+    ShadingNormal = 9,
+    Alpha = 10,
+    Emissive = 11,
+    BaseColor = 12,
+    Metallic = 13,
+    Roughness = 14,
+    Heatmap = 15
 };
 
 struct RenderSettings {

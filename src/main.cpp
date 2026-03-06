@@ -44,7 +44,6 @@ int main() {
     {
         float speed = 3.0f;
         float delta = 0.0f;
-        float accumulator = 0.0f;
         bool mouse_grab = false;
 
         Timer timer{};
@@ -138,9 +137,26 @@ int main() {
 
             ImGui::Begin("HWRT");
 
-            const char* items[] = {"None", "Texcoord", "Normal Texture", "Geometry Normal", "Geometry Tangent",
-                                   "Geometry Bitangent", "Geometry Tangent W", "Shading Normal", "Base Color", "Alpha",
-                                   "Metallic", "Roughness", "Emissive"};
+            static float slow_delta = 0.0f;
+
+            ImGui::Text("Frametime: %.2f ms (%.0f FPS)", slow_delta * 1000.0f, 1.0f / slow_delta);
+
+            const char* items[] = {"None",
+                                   "Texcoord",
+                                   "Depth",
+                                   "Hitpos",
+                                   "Normal Texture",
+                                   "Geometry Normal",
+                                   "Geometry Tangent",
+                                   "Geometry Bitangent",
+                                   "Geometry Tangent W",
+                                   "Shading Normal",
+                                   "Alpha",
+                                   "Emissive",
+                                   "Base Color",
+                                   "Metallic",
+                                   "Roughness",
+                                   "Heatmap"};
             static int current_item_index = 0;
             if (ImGui::Combo("Debug Channel", &current_item_index, items, IM_ARRAYSIZE(items))) {
                 renderer.get_settings().debug_channel = static_cast<DebugChannel>(current_item_index);
@@ -153,12 +169,19 @@ int main() {
             scene.set_camera(camera);
             renderer.draw_frame(scene);
 
-            if (accumulator >= 1.0) {
+            static float log_accumulator = 0.0f;
+            if (log_accumulator >= 1.0) {
                 spdlog::info("{:.0f} fps ({:.2f} ms)", 1.0f / delta, delta * 1000.0f);
-                accumulator = 0.0f;
+                log_accumulator = 0.0f;
+            }
+            static float imgui_accumulator = 0.0f;
+            if (imgui_accumulator >= 0.1) {
+                slow_delta = delta;
+                imgui_accumulator = 0.0f;
             }
             delta = timer.get_delta();
-            accumulator += delta;
+            log_accumulator += delta;
+            imgui_accumulator += delta;
         }
         ctx.get_device().get().waitIdle();
         Gui::terminate();

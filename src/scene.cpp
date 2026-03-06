@@ -78,6 +78,10 @@ void Scene::add_instance(const std::shared_ptr<Model>& model, const glm::mat4& t
 void Scene::build_blases(const Context& ctx) {
     spdlog::info("Building blases...");
 
+    if (materials.empty()) {
+        materials.push_back(Material{});
+    }
+
     vertex_buffer = BufferBuilder()
                     .size(sizeof(Vertex) * vertices.size())
                     .usage(vk::BufferUsageFlagBits::eStorageBuffer |
