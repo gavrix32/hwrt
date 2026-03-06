@@ -58,31 +58,31 @@ int main() {
 
         Scene scene;
         scene.set_camera(camera);
-        scene.add_instance(model, glm::mat4(1.0f), ctx);
+        //scene.add_instance(model, glm::mat4(1.0f), ctx);
 
         std::default_random_engine generator;
         std::uniform_real_distribution distribution(0.0f, 360.0f);
 
         int size = 67;
-        // for (int i = 0; i < size; ++i) {
-        //     for (int j = 0; j < size; ++j) {
-        //         for (int k = 0; k < size; ++k) {
-        //             float offset = 2.0f;
-        //
-        //             glm::mat4 model_matrix = glm::translate(glm::mat4(1.0f), glm::vec3(i, j, k) * offset);
-        //
-        //             float angleX = glm::radians(distribution(generator));
-        //             float angleY = glm::radians(distribution(generator));
-        //             float angleZ = glm::radians(distribution(generator));
-        //
-        //             model_matrix = glm::rotate(model_matrix, angleX, glm::vec3(1.0f, 0.0f, 0.0f));
-        //             model_matrix = glm::rotate(model_matrix, angleY, glm::vec3(0.0f, 1.0f, 0.0f));
-        //             model_matrix = glm::rotate(model_matrix, angleZ, glm::vec3(0.0f, 0.0f, 1.0f));
-        //
-        //             scene.add_instance(model, model_matrix);
-        //         }
-        //     }
-        // }
+        for (int i = 0; i < size; ++i) {
+            for (int j = 0; j < size; ++j) {
+                for (int k = 0; k < size; ++k) {
+                    float offset = 2.0f;
+
+                    glm::mat4 model_matrix = glm::translate(glm::mat4(1.0f), glm::vec3(i, j, k) * offset);
+
+                    float angleX = glm::radians(distribution(generator));
+                    float angleY = glm::radians(distribution(generator));
+                    float angleZ = glm::radians(distribution(generator));
+
+                    model_matrix = glm::rotate(model_matrix, angleX, glm::vec3(1.0f, 0.0f, 0.0f));
+                    model_matrix = glm::rotate(model_matrix, angleY, glm::vec3(0.0f, 1.0f, 0.0f));
+                    model_matrix = glm::rotate(model_matrix, angleZ, glm::vec3(0.0f, 0.0f, 1.0f));
+
+                    scene.add_instance(model, model_matrix, ctx);
+                }
+            }
+        }
         scene.build_blases(ctx);
         scene.build_tlas(ctx);
         scene.build_descriptor_set(ctx);

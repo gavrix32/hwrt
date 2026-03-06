@@ -13,21 +13,6 @@ struct ModelInstance {
     uint32_t first_blas;
 };
 
-// struct Geometry {
-//     uint32_t vertex_offset;
-//     uint32_t vertex_count;
-//     uint32_t index_offset;
-//     uint32_t index_count;
-//     uint32_t material_index;
-// };
-
-// struct SceneAddresses {
-//     uint64_t vertex_address;
-//     uint64_t index_address;
-//     uint64_t material_address;
-//     uint64_t geometry_address;
-// };
-
 struct Blas {
     AccelerationStructure as;
     uint32_t geometry_offset;
@@ -36,6 +21,8 @@ struct Blas {
 
 class Scene {
     Camera camera;
+
+    std::unordered_map<Model*, uint32_t> model_cache;
 
     std::vector<ModelInstance> model_instances;
 

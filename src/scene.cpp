@@ -14,11 +14,16 @@ vk::TransformMatrixKHR vk_matrix(const glm::mat4& m) {
 }
 
 void Scene::add_instance(const std::shared_ptr<Model>& model, const glm::mat4& transform, const Context& ctx) {
-    const ModelInstance instance{
-        .model = model,
-        .transform = transform,
-        .first_blas = static_cast<uint32_t>(blases.size())
-    };
+    if (model_cache.contains(model.get())) {
+        model_instances.push_back({
+            .model = model,
+            .transform = transform,
+            .first_blas = model_cache[model.get()]
+        });
+        return;
+    }
+
+    auto first_blas_idx = static_cast<uint32_t>(blases.size());
 
     for (auto& mesh : model->meshes) {
         Blas blas{};
@@ -53,6 +58,7 @@ void Scene::add_instance(const std::shared_ptr<Model>& model, const glm::mat4& t
         if (adjusted.emissive_index != UINT32_MAX) adjusted.emissive_index += images.size();
         materials.push_back(adjusted);
     }
+
     for (int i = 0; i < model->textures.size(); ++i) {
         const auto& texture = model->textures[i];
 
@@ -72,7 +78,14 @@ void Scene::add_instance(const std::shared_ptr<Model>& model, const glm::mat4& t
         image_views.emplace_back(ctx.get_device(), image, vk::ImageViewType::e2D, vk::ImageAspectFlagBits::eColor, 0, 1);
         images.push_back(std::move(image));
     }
-    model_instances.push_back(instance);
+
+    model_cache[model.get()] = first_blas_idx;
+
+    model_instances.push_back({
+        .model = model,
+        .transform = transform,
+        .first_blas = first_blas_idx
+    });
 }
 
 void Scene::build_blases(const Context& ctx) {
