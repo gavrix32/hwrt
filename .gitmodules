@@ -20,3 +20,6 @@
 	path = external/imgui
 	url = https://github.com/ocornut/imgui.git
 	branch = docking
+[submodule "external/mikktspace"]
+	path = external/mikktspace
+	url = https://github.com/mmikk/MikkTSpace.git

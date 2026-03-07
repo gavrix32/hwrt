@@ -7,8 +7,8 @@
 
 #include "vulkan/buffer.h"
 
-#define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+#include "tangent.h"
 
 #include "texture.h"
 
@@ -36,11 +36,14 @@ void Model::process_mesh(const fastgltf::Asset& asset, const fastgltf::Mesh& glt
             });
         }
 
+        bool have_tangents = false;
+
         if (const auto* tan_iter = gltf_primitive.findAttribute("TANGENT"); tan_iter != gltf_primitive.attributes.end()) {
             const auto& tan_accessor = asset.accessors[tan_iter->accessorIndex];
             fastgltf::iterateAccessorWithIndex<glm::vec4>(asset, tan_accessor, [&](const glm::vec4 tan, const size_t idx) {
                 primitive.vertices[idx].tangent = tan;
             });
+            have_tangents = true;
         }
 
         if (const auto* uv_iter = gltf_primitive.findAttribute("TEXCOORD_0"); uv_iter != gltf_primitive.attributes.end()) {
@@ -60,6 +63,10 @@ void Model::process_mesh(const fastgltf::Asset& asset, const fastgltf::Mesh& glt
 
         if (gltf_primitive.materialIndex.has_value()) {
             primitive.material_index = gltf_primitive.materialIndex.value();
+        }
+
+        if (!have_tangents) {
+            TangentGenerator::generate(&primitive);
         }
 
         mesh.primitives.push_back(primitive);

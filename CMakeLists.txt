@@ -49,7 +49,31 @@ add_executable(hwrt
         src/asset.cpp
         src/model.cpp
         src/gui.cpp
+        src/tangent.cpp
 )
+
+# --- STB Setup ---
+set(STB_DIR "${CMAKE_SOURCE_DIR}/external/stb")
+set(STB_IMPL_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/stb_impl.cpp")
+
+if (NOT EXISTS ${STB_IMPL_SOURCE})
+    file(WRITE ${STB_IMPL_SOURCE}
+            "#define STB_IMAGE_IMPLEMENTATION\n"
+            "#define STB_IMAGE_WRITE_IMPLEMENTATION\n"
+            "#include \"stb_image.h\"\n"
+            "#include \"stb_image_write.h\"\n"
+    )
+endif ()
+
+add_library(stb STATIC ${STB_IMPL_SOURCE})
+target_include_directories(stb PUBLIC ${STB_DIR})
+
+if (MSVC)
+    target_compile_options(stb PRIVATE /wd4100 /wd4996)
+else ()
+    target_compile_options(stb PRIVATE -Wno-unused-function)
+endif ()
+# -----------------
 
 # --- ImGui Setup ---
 set(IMGUI_DIR "${CMAKE_SOURCE_DIR}/external/imgui")
@@ -71,10 +95,23 @@ target_include_directories(imgui PUBLIC
         ${IMGUI_DIR}
         ${IMGUI_DIR}/backends
 )
+# -------------------
+
+# --- MikkTSpace Setup ---
+set(MIKKTSPACE_DIR "${CMAKE_SOURCE_DIR}/external/mikktspace")
+set(MIKKTSPACE_SOURCES
+        ${MIKKTSPACE_DIR}/mikktspace.c
+        ${MIKKTSPACE_DIR}/mikktspace.h
+)
+
+add_library(mikktspace STATIC ${MIKKTSPACE_SOURCES})
+
+target_include_directories(mikktspace PUBLIC ${MIKKTSPACE_DIR})
+# ------------------------
 
 target_link_libraries(imgui PRIVATE Vulkan::Vulkan glfw)
 
-target_include_directories(hwrt PRIVATE src/shaders/slang external/stb)
+target_include_directories(hwrt PRIVATE src/shaders/slang)
 
 target_link_libraries(hwrt PRIVATE
         Vulkan::Vulkan
@@ -83,7 +120,9 @@ target_link_libraries(hwrt PRIVATE
         GPUOpen::VulkanMemoryAllocator
         glm::glm
         fastgltf::fastgltf
+        stb
         imgui
+        mikktspace
 )
 
 target_compile_definitions(hwrt PRIVATE
