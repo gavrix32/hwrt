@@ -13,6 +13,7 @@
 #include "camera.h"
 #include "gui.h"
 #include "window.h"
+#include "vulkan/sbt.h"
 
 Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
     SCOPED_TIMER();
@@ -24,11 +25,6 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
     auto surface = vk::raii::SurfaceKHR(ctx.get_instance().get(), surface_);
 
     swapchain = std::make_unique<Swapchain>(ctx.get_adapter(), ctx.get_device(), Window::get(), surface);
-
-    auto rt_pipeline_props = ctx.get_adapter().get().getProperties2<
-        vk::PhysicalDeviceProperties2,
-        vk::PhysicalDeviceRayTracingPipelinePropertiesKHR
-    >().get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
 
     auto single_time_encoder = SingleTimeEncoder(ctx.get_device());
 
@@ -107,9 +103,10 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
     // Ray Tracing Pipeline
 
     auto rt_pipeline = PipelineBuilder()
-                       .rgen("../src/shaders/spirv/raytrace.rgen.spv")
-                       .rmiss("../src/shaders/spirv/raytrace.rmiss.spv")
-                       .rchit("../src/shaders/spirv/raytrace.rchit.spv")
+                       .rgen_group("../src/shaders/spirv/raytrace.rgen.spv")
+                       .rmiss_group("../src/shaders/spirv/raytrace.rmiss.spv")
+                       .hit_group("../src/shaders/spirv/raytrace.rchit.spv", std::nullopt)
+                       .hit_group("../src/shaders/spirv/raytrace.rchit.spv", "../src/shaders/spirv/raytrace.rahit.spv")
                        .ray_depth(1)
                        .descriptor_set_layout(push_descriptor_set_layout)
                        .descriptor_set_layout(ctx.get_bindless_layout())
@@ -118,68 +115,7 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
 
     // Shader Binding Table
 
-    uint32_t handle_size = rt_pipeline_props.shaderGroupHandleSize;
-    uint32_t handle_alignment = rt_pipeline_props.shaderGroupHandleAlignment;
-    uint32_t base_alignment = rt_pipeline_props.shaderGroupBaseAlignment;
-    uint32_t handle_count = rt_pipeline.get_group_count();
-
-    // TODO: to function
-    //////////////////////////////////////////////////
-    size_t data_size = handle_size * handle_count;
-
-    std::vector<uint8_t> shader_handles = rt_pipeline.get().getRayTracingShaderGroupHandlesKHR<uint8_t>(
-        0,
-        handle_count,
-        data_size);
-
-    auto align_up = [](uint32_t size, uint32_t alignment) {
-        return (size + alignment - 1) & ~(alignment - 1);
-    };
-    uint32_t rgen_size = align_up(handle_size, handle_alignment);
-    uint32_t rmiss_size = align_up(handle_size, handle_alignment);
-    uint32_t rchit_size = align_up(handle_size, handle_alignment);
-    uint32_t callable_size = 0;
-
-    uint32_t rgen_offset = 0;
-    uint32_t rmiss_offset = align_up(rgen_offset + rgen_size, base_alignment);
-    uint32_t rchit_offset = align_up(rmiss_offset + rmiss_size, base_alignment);
-    uint32_t callable_offset = align_up(rchit_offset + rchit_size, base_alignment);
-
-    size_t buffer_size = callable_offset + callable_size;
-    ////////////////////////////////////////////////
-
-    vk::StridedDeviceAddressRegionKHR rgen_region{};
-    vk::StridedDeviceAddressRegionKHR rmiss_region{};
-    vk::StridedDeviceAddressRegionKHR rchit_region{};
-
-    auto sbt_buffer = BufferBuilder()
-                      .size(buffer_size)
-                      .usage(
-                          vk::BufferUsageFlagBits::eShaderDeviceAddress |
-                          vk::BufferUsageFlagBits::eShaderBindingTableKHR)
-                      .allocation_flags(VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT)
-                      .build(ctx.get_allocator());
-
-    {
-        auto sbt_address = sbt_buffer.get_device_address(ctx.get_device());
-
-        auto* p_data = sbt_buffer.mapped_ptr<uint8_t>();
-
-        memcpy(p_data + rgen_offset, shader_handles.data() + 0 * handle_size, handle_size);
-        rgen_region.deviceAddress = sbt_address + rgen_offset;
-        rgen_region.stride = rgen_size;
-        rgen_region.size = rgen_size;
-
-        memcpy(p_data + rmiss_offset, shader_handles.data() + 1 * handle_size, handle_size);
-        rmiss_region.deviceAddress = sbt_address + rmiss_offset;
-        rmiss_region.stride = rmiss_size;
-        rmiss_region.size = rmiss_size;
-
-        memcpy(p_data + rchit_offset, shader_handles.data() + 2 * handle_size, handle_size);
-        rchit_region.deviceAddress = sbt_address + rchit_offset;
-        rchit_region.stride = rchit_size;
-        rchit_region.size = rchit_size;
-    }
+    ShaderBindingTable sbt(ctx.get_adapter(), ctx.get_device(), rt_pipeline, ctx.get_allocator());
 
     constexpr int frames_in_flight = 2;
 
@@ -204,12 +140,9 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
 
     res = std::make_unique<Resources>(Resources{
         .surface = std::move(surface),
-        .sbt_buffer = std::move(sbt_buffer),
-        .rgen_region = rgen_region,
-        .rmiss_region = rmiss_region,
-        .rchit_region = rchit_region,
         .descriptor_set_layout = std::move(push_descriptor_set_layout),
         .rt_pipeline = std::move(rt_pipeline),
+        .sbt = std::move(sbt),
         .rt_image = std::move(rt_image),
         .rt_image_view = std::move(rt_image_view),
         .render_settings = render_settings,
@@ -317,9 +250,9 @@ void Renderer::draw_frame(const Scene& scene) {
     cmd.bindDescriptorSets2(bind_sets_info);
     cmd.pushConstants2(push_constants_info);
 
-    cmd.traceRaysKHR(res->rgen_region,
-                     res->rmiss_region,
-                     res->rchit_region,
+    cmd.traceRaysKHR(res->sbt.get_rgen_region(),
+                     res->sbt.get_rmiss_region(),
+                     res->sbt.get_hit_region(),
                      {},
                      swapchain->get_extent().width,
                      swapchain->get_extent().height,
@@ -460,6 +393,6 @@ void Renderer::recreate() {
     res->rt_image_view = ctx.get_device().get().createImageView(rt_image_view_create_info);
 }
 
-void Renderer::update_settings() {
+void Renderer::update_settings() const {
     memcpy(res->render_settings_buffer.mapped_ptr(), &res->render_settings, sizeof(RenderSettings));
 }

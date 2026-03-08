@@ -8,18 +8,15 @@
 #include "context.h"
 #include "frame.h"
 #include "scene.h"
+#include "vulkan/sbt.h"
 
 struct Resources {
     vk::raii::SurfaceKHR surface;
 
-    Buffer sbt_buffer;
-
-    vk::StridedDeviceAddressRegionKHR rgen_region{};
-    vk::StridedDeviceAddressRegionKHR rmiss_region{};
-    vk::StridedDeviceAddressRegionKHR rchit_region{};
-
     vk::raii::DescriptorSetLayout descriptor_set_layout;
+
     Pipeline rt_pipeline;
+    ShaderBindingTable sbt;
 
     Image rt_image;
     vk::raii::ImageView rt_image_view;
@@ -41,7 +38,7 @@ public:
 
     void draw_frame(const Scene& scene);
     void recreate();
-    void update_settings();
+    void update_settings() const;
 
     [[nodiscard]] RenderSettings& get_settings() const {
         return res->render_settings;

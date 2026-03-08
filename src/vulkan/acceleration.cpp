@@ -25,3 +25,21 @@ AccelerationStructure::AccelerationStructure(const Device& device,
     };
     address = device.get().getAccelerationStructureAddressKHR(device_address_info);
 }
+
+AccelerationStructure::AccelerationStructure(AccelerationStructure&& other) noexcept
+    : handle(std::move(other.handle)),
+      address(std::exchange(other.address, 0)),
+      buffer(std::move(other.buffer)) {
+}
+
+AccelerationStructure& AccelerationStructure::operator=(AccelerationStructure&& other) noexcept {
+    if (this == &other) {
+        return *this;
+    }
+
+    handle = std::move(other.handle);
+    buffer = std::move(other.buffer);
+    address = std::exchange(other.address, 0);
+
+    return *this;
+}

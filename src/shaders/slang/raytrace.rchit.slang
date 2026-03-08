@@ -16,6 +16,7 @@ struct Surface {
     float3 albedo;
     float3 local_normal;
     float3 shading_normal;
+    float alpha;
     float metallic;
     float roughness;
     float3 emissive;
@@ -51,10 +52,12 @@ Surface get_surface(ScenePtrs scene, float3 bary) {
     s.uv = v0.texcoord.xy * bary.x + v1.texcoord.xy * bary.y + v2.texcoord.xy * bary.z;
 
     if (material.albedo_index != UINT32_MAX) {
-        float3 albedo = textures[NonUniformResourceIndex(material.albedo_index)].SampleLevel(s.uv, 0.0).rgb;
-        s.albedo = albedo * material.base_color_factor.rgb;
+        float4 albedo = textures[NonUniformResourceIndex(material.albedo_index)].SampleLevel(s.uv, 0.0).rgba;
+        s.albedo = albedo.rgb * material.base_color_factor.rgb;
+        s.alpha = albedo.a * material.base_color_factor.a;
     } else {
         s.albedo = material.base_color_factor.rgb;
+        s.alpha = material.base_color_factor.a;
     }
 
     if (material.normal_index != UINT32_MAX) {
@@ -97,11 +100,7 @@ Surface get_surface(ScenePtrs scene, float3 bary) {
 void main(inout Payload payload, in BuiltInTriangleIntersectionAttributes attr) {
     ScenePtrs scene = push_data.scene_ptrs;
 
-    float3 bary = float3(
-        1.0 - attr.barycentrics.x - attr.barycentrics.y,
-        attr.barycentrics.x,
-        attr.barycentrics.y
-    );
+    float3 bary = float3(1.0 - attr.barycentrics.x - attr.barycentrics.y, attr.barycentrics.x, attr.barycentrics.y);
 
     Surface surface = get_surface(scene, bary);
 
@@ -123,7 +122,6 @@ void main(inout Payload payload, in BuiltInTriangleIntersectionAttributes attr) 
 
     bool use_gamma_correction = false;
 
-    // TODO: implement alpha
     switch (render_settings.debug_channel) {
         case DebugChannel.None: payload.color = final_color; use_gamma_correction = true; break;
         case DebugChannel.Texcoord: payload.color = float3(surface.uv, 0.0); break;
@@ -135,7 +133,7 @@ void main(inout Payload payload, in BuiltInTriangleIntersectionAttributes attr) 
         case DebugChannel.GeometryBitangent: payload.color = surface.geometry_bitangent * 0.5 + 0.5; break;
         case DebugChannel.GeometryTangentW: payload.color = float3(surface.tangent_w); break;
         case DebugChannel.ShadingNormal: payload.color = surface.shading_normal * 0.5 + 0.5; break;
-        case DebugChannel.Alpha: payload.color = float3(0.0); break;
+        case DebugChannel.Alpha: payload.color = float3(surface.alpha); break;
         case DebugChannel.Emissive: payload.color = surface.emissive; break;
         case DebugChannel.BaseColor: payload.color = surface.albedo; use_gamma_correction = true; break;
         case DebugChannel.Metallic: payload.color = float3(surface.metallic); break;

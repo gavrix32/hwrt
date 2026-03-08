@@ -8,10 +8,19 @@ Pipeline::Pipeline(const std::vector<vk::PipelineShaderStageCreateInfo>& stage_i
                    const std::vector<vk::RayTracingShaderGroupCreateInfoKHR>& group_infos,
                    const uint32_t ray_depth,
                    const vk::PipelineLayoutCreateInfo& layout_info,
-                   const uint32_t group_count,
                    const uint32_t stage_count,
+                   const uint32_t group_count,
+                   const uint32_t rgen_count,
+                   const uint32_t rmiss_count,
+                   const uint32_t hit_count,
                    const Device& device)
-    : handle(nullptr), layout(nullptr), group_count_(group_count), stage_count_(stage_count) {
+    : handle(nullptr),
+      layout(nullptr),
+      stage_count_(stage_count),
+      group_count_(group_count),
+      rgen_count_(rgen_count),
+      rmiss_count_(rmiss_count),
+      hit_count_(hit_count) {
     layout = device.get().createPipelineLayout(layout_info);
 
     const vk::RayTracingPipelineCreateInfoKHR create_info{
@@ -28,8 +37,8 @@ Pipeline::Pipeline(const std::vector<vk::PipelineShaderStageCreateInfo>& stage_i
 Pipeline::Pipeline(Pipeline&& other) noexcept
     : handle(std::exchange(other.handle, nullptr)),
       layout(std::exchange(other.layout, nullptr)),
-      group_count_(std::exchange(other.group_count_, 0)),
-      stage_count_(std::exchange(other.stage_count_, 0)) {
+      stage_count_(std::exchange(other.stage_count_, 0)),
+      group_count_(std::exchange(other.group_count_, 0)) {
 }
 
 Pipeline& Pipeline::operator=(Pipeline&& other) noexcept {
@@ -43,42 +52,45 @@ Pipeline& Pipeline::operator=(Pipeline&& other) noexcept {
     return *this;
 }
 
-const vk::raii::Pipeline& Pipeline::get() const {
-    return handle;
-}
-
-const vk::raii::PipelineLayout& Pipeline::get_layout() const {
-    return layout;
-}
-
-uint32_t Pipeline::get_group_count() const {
-    return group_count_;
-}
-
-uint32_t Pipeline::get_stage_count() const {
-    return stage_count_;
-}
-
 PipelineBuilder::PipelineBuilder() = default;
 
-PipelineBuilder& PipelineBuilder::rgen(const std::string& filename) {
-    shader_filenames.push_back(filename);
-    stages.push_back(vk::ShaderStageFlagBits::eRaygenKHR);
-    groups.push_back(vk::RayTracingShaderGroupTypeKHR::eGeneral);
+uint32_t PipelineBuilder::add_stage(const std::string& path, const vk::ShaderStageFlagBits stage) {
+    pending_stages.push_back({path, stage});
+    return static_cast<uint32_t>(pending_stages.size() - 1);
+}
+
+PipelineBuilder& PipelineBuilder::rgen_group(const std::string& path) {
+    rgen_count++;
+    pending_groups.push_back({
+        .type = vk::RayTracingShaderGroupTypeKHR::eGeneral,
+        .general_idx = add_stage(path, vk::ShaderStageFlagBits::eRaygenKHR)
+    });
     return *this;
 }
 
-PipelineBuilder& PipelineBuilder::rmiss(const std::string& filename) {
-    shader_filenames.push_back(filename);
-    stages.push_back(vk::ShaderStageFlagBits::eMissKHR);
-    groups.push_back(vk::RayTracingShaderGroupTypeKHR::eGeneral);
+PipelineBuilder& PipelineBuilder::rmiss_group(const std::string& path) {
+    rmiss_count++;
+    pending_groups.push_back({
+        .type = vk::RayTracingShaderGroupTypeKHR::eGeneral,
+        .general_idx = add_stage(path, vk::ShaderStageFlagBits::eMissKHR)
+    });
     return *this;
 }
 
-PipelineBuilder& PipelineBuilder::rchit(const std::string& filename) {
-    shader_filenames.push_back(filename);
-    stages.push_back(vk::ShaderStageFlagBits::eClosestHitKHR);
-    groups.push_back(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup);
+PipelineBuilder& PipelineBuilder::hit_group(const std::optional<std::string>& rchit_path,
+                                            const std::optional<std::string>& rahit_path) {
+    hit_count++;
+    PendingGroup group{};
+    group.type = vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup;
+
+    if (rchit_path.has_value()) {
+        group.closest_hit_idx = add_stage(rchit_path.value(), vk::ShaderStageFlagBits::eClosestHitKHR);
+    }
+    if (rahit_path.has_value()) {
+        group.any_hit_idx = add_stage(rahit_path.value(), vk::ShaderStageFlagBits::eAnyHitKHR);
+    }
+
+    pending_groups.push_back(group);
     return *this;
 }
 
@@ -115,43 +127,39 @@ std::vector<char> read_file(const std::string& filename) {
 
 Pipeline PipelineBuilder::build(const Device& device) const {
     std::vector<vk::raii::ShaderModule> modules;
+    std::vector<vk::PipelineShaderStageCreateInfo> stage_infos;
+    std::vector<vk::RayTracingShaderGroupCreateInfoKHR> group_infos;
 
-    for (const auto& filename : shader_filenames) {
-        auto code = read_file(filename);
+    modules.reserve(pending_stages.size());
+    stage_infos.reserve(pending_stages.size());
+    group_infos.reserve(pending_groups.size());
+
+    for (const auto& stage : pending_stages) {
+        auto code = read_file(stage.path);
 
         vk::ShaderModuleCreateInfo module_info{
             .codeSize = code.size() * sizeof(char),
             .pCode = reinterpret_cast<const uint32_t*>(code.data()),
         };
-        modules.push_back(device.get().createShaderModule(module_info));
-    }
+        modules.emplace_back(device.get().createShaderModule(module_info));
 
-    std::vector<vk::PipelineShaderStageCreateInfo> stage_infos;
-    std::vector<vk::RayTracingShaderGroupCreateInfoKHR> group_infos;
-
-    for (int i = 0; i < shader_filenames.size(); ++i) {
         vk::PipelineShaderStageCreateInfo stage_info{
-            .stage = stages[i],
-            .module = modules[i],
+            .stage = stage.stage,
+            .module = modules.back(),
             .pName = "main",
         };
-        stage_infos.push_back(stage_info);
+        stage_infos.emplace_back(stage_info);
+    }
 
+    for (const auto& group : pending_groups) {
         vk::RayTracingShaderGroupCreateInfoKHR group_info{
-            .type = groups[i],
-            .generalShader = vk::ShaderUnusedKHR,
-            .closestHitShader = vk::ShaderUnusedKHR,
-            .anyHitShader = vk::ShaderUnusedKHR,
+            .type = group.type,
+            .generalShader = group.general_idx,
+            .closestHitShader = group.closest_hit_idx,
+            .anyHitShader = group.any_hit_idx,
             .intersectionShader = vk::ShaderUnusedKHR,
         };
-
-        if (groups[i] == vk::RayTracingShaderGroupTypeKHR::eGeneral) {
-            group_info.generalShader = i;
-        } else if (groups[i] == vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup) {
-            group_info.closestHitShader = i;
-        }
-
-        group_infos.push_back(group_info);
+        group_infos.emplace_back(group_info);
     }
 
     const vk::PipelineLayoutCreateInfo layout_info{
@@ -161,5 +169,15 @@ Pipeline PipelineBuilder::build(const Device& device) const {
         .pPushConstantRanges = push_constant_ranges.data(),
     };
 
-    return Pipeline(stage_infos, group_infos, ray_depth_, layout_info, groups.size(), stages.size(), device);
+    return Pipeline(
+        stage_infos,
+        group_infos,
+        ray_depth_,
+        layout_info,
+        stage_infos.size(),
+        group_infos.size(),
+        rgen_count,
+        rmiss_count,
+        hit_count,
+        device);
 }

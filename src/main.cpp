@@ -20,11 +20,10 @@
 // TODO: Meshoptimizer?
 
 // TODO: Замена для stb image? долго грузит текстуры
-// TODO: Починить инстансинг
 // TODO: Перенести scene storage буферы на GPU!!!
 // TODO: И хелпер для staging buffers
 // TODO: удалить pipeline cache и узнать за сколько он создаётся
-// TODO: alpha_cutoff, alpha_mode
+// TODO: исправить краш при рендеринге пустой сцены
 
 #ifdef NDEBUG
 constexpr bool validation = false;

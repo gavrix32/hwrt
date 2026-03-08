@@ -37,6 +37,9 @@ struct Material {
 
     uint32_t emissive_index = UINT32_MAX;
     float3 emissive_factor;
+
+    uint32_t alpha_mode;
+    float alpha_cutoff;
 };
 
 struct Geometry {

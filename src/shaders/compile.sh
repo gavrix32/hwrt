@@ -8,7 +8,7 @@ mkdir -p "$OUTPUT_DIR"
 
 echo "Compiling shaders..."
 
-for SHADER in raytrace.rgen raytrace.rmiss raytrace.rchit; do
+for SHADER in raytrace.rgen raytrace.rmiss raytrace.rchit raytrace.rahit; do
     SRC="$SHADER_DIR/$SHADER.slang"
     DST="$OUTPUT_DIR/$SHADER.spv"
 

@@ -215,6 +215,9 @@ void Model::process_material(const fastgltf::Asset& asset, const fastgltf::Mater
     }
     material.emissive_factor = glm::make_vec3(gltf_material.emissiveFactor.data());
 
+    material.alpha_mode = static_cast<uint32_t>(gltf_material.alphaMode);
+    material.alpha_cutoff = gltf_material.alphaCutoff;
+
     materials.emplace_back(material);
 }
 

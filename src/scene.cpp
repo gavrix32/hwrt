@@ -170,10 +170,17 @@ void Scene::build_blases(const Context& ctx) {
                 .indexData = index_address + geometry.index_offset * sizeof(uint32_t),
             };
 
+            auto geometry_flags = vk::GeometryFlagBitsKHR::eOpaque;
+
+            // alpha_mode == AlphaMode::Mask
+            if (materials[geometry.material_index].alpha_mode == 1) {
+                geometry_flags = {};
+            }
+
             as_geometries[i] = vk::AccelerationStructureGeometryKHR{
                 .geometryType = vk::GeometryTypeKHR::eTriangles,
                 .geometry = triangles_data,
-                .flags = vk::GeometryFlagBitsKHR::eOpaque,
+                .flags = geometry_flags,
             };
 
             as_ranges[i].primitiveCount = geometry.index_count / 3;
@@ -237,15 +244,29 @@ void Scene::build_tlas(const Context& ctx) {
     for (const auto& model_instance : model_instances) {
         for (const auto& node : model_instance.model->nodes) {
             glm::mat4 final_transform = model_instance.transform * node.transform;
-            uint32_t blas_idx = model_instance.first_blas + node.mesh_index;
+            const uint32_t blas_idx = model_instance.first_blas + node.mesh_index;
+            const auto& blas = blases[blas_idx];
+
+            uint32_t sbt_offset = 0;
+
+            for (uint32_t i = 0; i < blas.geometry_count; ++i) {
+                uint32_t geometry_idx = blas.geometry_offset + i;
+                const auto& material = materials[geometries[geometry_idx].material_index];
+
+                // alpha_mode == AlphaMode::Mask
+                if (material.alpha_mode == 1) {
+                    sbt_offset = 1;
+                    break;
+                }
+            }
 
             vk::AccelerationStructureInstanceKHR tlas_instance{
                 .transform = vk_matrix(final_transform),
-                .instanceCustomIndex = blases[blas_idx].geometry_offset,
+                .instanceCustomIndex = blas.geometry_offset,
                 .mask = 0xFF,
-                .instanceShaderBindingTableRecordOffset = 0,
+                .instanceShaderBindingTableRecordOffset = sbt_offset,
                 .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
-                .accelerationStructureReference = blases[blas_idx].as.get_device_address()
+                .accelerationStructureReference = blas.as.get_device_address()
             };
             tlas_instances.push_back(tlas_instance);
         }
