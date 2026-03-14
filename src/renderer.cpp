@@ -32,7 +32,7 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
 
     auto rt_image = ImageBuilder()
                     .type(vk::ImageType::e2D)
-                    .format(swapchain->get_format())
+                    .format(vk::Format::eR32G32B32A32Sfloat)
                     .size(swapchain->get_extent().width, swapchain->get_extent().height)
                     .mip_levels(1)
                     .layers(1)
@@ -40,24 +40,37 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
                     .usage(vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc)
                     .build(ctx.get_allocator());
 
-    vk::ImageViewCreateInfo rt_image_view_create_info{
-        .image = rt_image.get(),
-        .viewType = vk::ImageViewType::e2D,
-        .format = swapchain->get_format(),
-        .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
-    };
-    auto rt_image_view = ctx.get_device().get().createImageView(rt_image_view_create_info);
+    auto rt_image_view = ImageView(ctx.get_device(), rt_image, vk::ImageViewType::e2D, vk::ImageAspectFlagBits::eColor, 0, 1);
 
     rt_image.transition_layout(single_time_encoder.get_cmd(),
                                vk::ImageLayout::eGeneral,
                                vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
                                vk::AccessFlagBits2::eShaderWrite);
 
+    // Out Image
+
+    auto out_image = ImageBuilder()
+                     .type(vk::ImageType::e2D)
+                     .format(swapchain->get_format())
+                     .size(swapchain->get_extent().width, swapchain->get_extent().height)
+                     .mip_levels(1)
+                     .layers(1)
+                     .samples(vk::SampleCountFlagBits::e1)
+                     .usage(vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc)
+                     .build(ctx.get_allocator());
+
+    auto out_image_view = ImageView(ctx.get_device(), out_image, vk::ImageViewType::e2D, vk::ImageAspectFlagBits::eColor, 0, 1);
+
+    out_image.transition_layout(single_time_encoder.get_cmd(),
+                                vk::ImageLayout::eGeneral,
+                                vk::PipelineStageFlagBits2::eComputeShader,
+                                vk::AccessFlagBits2::eShaderWrite);
+
     single_time_encoder.submit(ctx.get_device());
 
-    // Push Descriptors
+    // Ray Tracing Push Descriptors
 
-    std::vector<vk::DescriptorSetLayoutBinding> push_bindings;
+    std::vector<vk::DescriptorSetLayoutBinding> rt_push_bindings;
 
     vk::DescriptorSetLayoutBinding as_binding{
         .binding = 0,
@@ -65,15 +78,15 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eAll,
     };
-    push_bindings.push_back(as_binding);
+    rt_push_bindings.push_back(as_binding);
 
-    vk::DescriptorSetLayoutBinding rt_image_binding{
+    vk::DescriptorSetLayoutBinding rt_storage_image_binding{
         .binding = 1,
         .descriptorType = vk::DescriptorType::eStorageImage,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eAll,
     };
-    push_bindings.push_back(rt_image_binding);
+    rt_push_bindings.push_back(rt_storage_image_binding);
 
     vk::DescriptorSetLayoutBinding uniform_binding{
         .binding = 2,
@@ -81,37 +94,74 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eAll,
     };
-    push_bindings.push_back(uniform_binding);
+    rt_push_bindings.push_back(uniform_binding);
 
-    // Descriptor set layouts
+    // Ray Tracing Descriptor set layouts
 
-    vk::DescriptorSetLayoutCreateInfo push_descriptor_set_layout_create_info{
+    vk::DescriptorSetLayoutCreateInfo rt_push_descriptor_set_layout_info{
         .flags = vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptor,
-        .bindingCount = static_cast<uint32_t>(push_bindings.size()),
-        .pBindings = push_bindings.data(),
+        .bindingCount = static_cast<uint32_t>(rt_push_bindings.size()),
+        .pBindings = rt_push_bindings.data(),
     };
-    auto push_descriptor_set_layout = ctx.get_device().get().createDescriptorSetLayout(push_descriptor_set_layout_create_info);
+    auto rt_push_descriptor_set_layout = ctx.get_device().get().createDescriptorSetLayout(rt_push_descriptor_set_layout_info);
+
+    // Compute Push Descriptors
+
+    std::vector<vk::DescriptorSetLayoutBinding> compute_push_bindings;
+
+    vk::DescriptorSetLayoutBinding compute_storage_image_binding{
+        .binding = 0,
+        .descriptorType = vk::DescriptorType::eStorageImage,
+        .descriptorCount = 2,
+        .stageFlags = vk::ShaderStageFlagBits::eAll,
+    };
+    compute_push_bindings.push_back(compute_storage_image_binding);
+
+    // Compute Descriptor set layouts
+
+    vk::DescriptorSetLayoutCreateInfo compute_push_descriptor_set_layout_info{
+        .flags = vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptor,
+        .bindingCount = static_cast<uint32_t>(compute_push_bindings.size()),
+        .pBindings = compute_push_bindings.data(),
+    };
+    auto compute_push_descriptor_set_layout =
+        ctx.get_device().get().createDescriptorSetLayout(compute_push_descriptor_set_layout_info);
 
     // Push constant
 
-    vk::PushConstantRange push_constant_range{
-        .stageFlags = vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR,
+    vk::PushConstantRange rt_push_constant_range{
+        .stageFlags = vk::ShaderStageFlagBits::eRaygenKHR |
+                      vk::ShaderStageFlagBits::eClosestHitKHR |
+                      vk::ShaderStageFlagBits::eAnyHitKHR,
+        .offset = 0,
+        .size = sizeof(PushData)
+    };
+
+    vk::PushConstantRange compute_push_constant_range{
+        .stageFlags = vk::ShaderStageFlagBits::eCompute,
         .offset = 0,
         .size = sizeof(PushData)
     };
 
     // Ray Tracing Pipeline
 
-    auto rt_pipeline = PipelineBuilder()
+    auto rt_pipeline = RayTracingPipelineBuilder()
                        .rgen_group("../src/shaders/spirv/raytrace.rgen.spv")
                        .rmiss_group("../src/shaders/spirv/raytrace.rmiss.spv")
                        .hit_group("../src/shaders/spirv/raytrace.rchit.spv", std::nullopt)
                        .hit_group("../src/shaders/spirv/raytrace.rchit.spv", "../src/shaders/spirv/raytrace.rahit.spv")
-                       .ray_depth(1)
-                       .descriptor_set_layout(push_descriptor_set_layout)
+                       .descriptor_set_layout(rt_push_descriptor_set_layout)
                        .descriptor_set_layout(ctx.get_bindless_layout())
-                       .push_constant_range(push_constant_range)
+                       .push_constant_range(rt_push_constant_range)
                        .build(ctx.get_device());
+
+    // Compute Pipeline
+
+    auto compute_pipeline = ComputePipelineBuilder()
+                            .stage("../src/shaders/spirv/compute.spv")
+                            .descriptor_set_layout(compute_push_descriptor_set_layout)
+                            .push_constant_range(compute_push_constant_range)
+                            .build(ctx.get_device());
 
     // Shader Binding Table
 
@@ -140,11 +190,15 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
 
     res = std::make_unique<Resources>(Resources{
         .surface = std::move(surface),
-        .descriptor_set_layout = std::move(push_descriptor_set_layout),
+        .rt_descriptor_set_layout = std::move(rt_push_descriptor_set_layout),
+        .compute_descriptor_set_layout = std::move(compute_push_descriptor_set_layout),
         .rt_pipeline = std::move(rt_pipeline),
+        .compute_pipeline = std::move(compute_pipeline),
         .sbt = std::move(sbt),
         .rt_image = std::move(rt_image),
+        .out_image = std::move(out_image),
         .rt_image_view = std::move(rt_image_view),
+        .out_image_view = std::move(out_image_view),
         .render_settings = render_settings,
         .render_settings_buffer = std::move(render_settings_buffer),
     });
@@ -177,28 +231,30 @@ void Renderer::draw_frame(const Scene& scene) {
     encoder->begin(frame_mgr->get_frame_index());
     auto& cmd = encoder->get_cmd();
 
+    // Ray Tracing writes
+
     vk::WriteDescriptorSetAccelerationStructureKHR write_as_info{
         .accelerationStructureCount = 1,
         .pAccelerationStructures = &*scene.get_tlas().get_handle(),
     };
 
-    vk::WriteDescriptorSet write_as{
+    vk::WriteDescriptorSet rt_write_as{
         .pNext = &write_as_info,
         .dstBinding = 0,
         .descriptorCount = 1,
         .descriptorType = vk::DescriptorType::eAccelerationStructureKHR,
     };
 
-    vk::DescriptorImageInfo descriptor_image_info{
-        .imageView = res->rt_image_view,
+    vk::DescriptorImageInfo rt_descriptor_image_info{
+        .imageView = res->rt_image_view.get(),
         .imageLayout = vk::ImageLayout::eGeneral,
     };
 
-    vk::WriteDescriptorSet write_image{
+    vk::WriteDescriptorSet rt_write_image{
         .dstBinding = 1,
         .descriptorCount = 1,
         .descriptorType = vk::DescriptorType::eStorageImage,
-        .pImageInfo = &descriptor_image_info,
+        .pImageInfo = &rt_descriptor_image_info,
     };
 
     auto camera = scene.get_camera();
@@ -207,7 +263,14 @@ void Renderer::draw_frame(const Scene& scene) {
         .inv_proj = glm::inverse(camera.get_proj()),
     };
     auto& uniform_buffer = frame_mgr->get_uniform_buffer();
-    memcpy(uniform_buffer.mapped_ptr(), &uniform, sizeof(Uniform));
+
+    bool frame_reset = false;
+
+    if (std::memcmp(uniform_buffer.mapped_ptr(), &uniform, sizeof(Uniform)) != 0) {
+        frame_reset = true;
+        frame_count = 1;
+        memcpy(uniform_buffer.mapped_ptr(), &uniform, sizeof(Uniform));
+    }
 
     vk::DescriptorBufferInfo descriptor_uniform_info{
         .buffer = uniform_buffer.get(),
@@ -215,27 +278,65 @@ void Renderer::draw_frame(const Scene& scene) {
         .range = sizeof(Uniform),
     };
 
-    vk::WriteDescriptorSet write_uniform{
+    vk::WriteDescriptorSet rt_write_uniform{
         .dstBinding = 2,
         .descriptorCount = 1,
         .descriptorType = vk::DescriptorType::eUniformBuffer,
         .pBufferInfo = &descriptor_uniform_info,
     };
 
-    std::vector writes{write_as, write_image, write_uniform};
+    std::vector rt_writes{rt_write_as, rt_write_image, rt_write_uniform};
+
+    // Compute writes
+
+    vk::DescriptorImageInfo compute_descriptor_rt_image_info{
+        .imageView = res->rt_image_view.get(),
+        .imageLayout = vk::ImageLayout::eGeneral,
+    };
+
+    vk::DescriptorImageInfo compute_descriptor_out_image_info{
+        .imageView = res->out_image_view.get(),
+        .imageLayout = vk::ImageLayout::eGeneral,
+    };
+
+    std::vector compute_descriptor_image_infos{compute_descriptor_rt_image_info, compute_descriptor_out_image_info};
+
+    vk::WriteDescriptorSet compute_write_out_images{
+        .dstBinding = 0,
+        .descriptorCount = static_cast<uint32_t>(compute_descriptor_image_infos.size()),
+        .descriptorType = vk::DescriptorType::eStorageImage,
+        .pImageInfo = compute_descriptor_image_infos.data(),
+    };
+
+    std::vector compute_writes{compute_write_out_images};
+
+    // Push constants
 
     PushData push_data{
         .scene_ptrs = scene.get_scene_ptrs(),
         .render_settings = res->render_settings_buffer.get_device_address(ctx.get_device()),
+        .frame_count = frame_count
     };
 
-    vk::PushConstantsInfo push_constants_info{
+    vk::PushConstantsInfo rt_push_constants_info{
         .layout = res->rt_pipeline.get_layout(),
-        .stageFlags = vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR,
+        .stageFlags = vk::ShaderStageFlagBits::eRaygenKHR |
+                      vk::ShaderStageFlagBits::eClosestHitKHR |
+                      vk::ShaderStageFlagBits::eAnyHitKHR,
         .offset = 0,
         .size = sizeof(PushData),
         .pValues = &push_data,
     };
+
+    vk::PushConstantsInfo compute_push_constants_info{
+        .layout = res->compute_pipeline.get_layout(),
+        .stageFlags = vk::ShaderStageFlagBits::eCompute,
+        .offset = 0,
+        .size = sizeof(PushData),
+        .pValues = &push_data,
+    };
+
+    // Ray Tracing Bind Descriptor Sets
 
     vk::BindDescriptorSetsInfo bind_sets_info{
         .stageFlags = vk::ShaderStageFlagBits::eAll,
@@ -246,9 +347,9 @@ void Renderer::draw_frame(const Scene& scene) {
     };
 
     cmd.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, res->rt_pipeline.get());
-    cmd.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, res->rt_pipeline.get_layout(), 0, writes);
+    cmd.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, res->rt_pipeline.get_layout(), 0, rt_writes);
     cmd.bindDescriptorSets2(bind_sets_info);
-    cmd.pushConstants2(push_constants_info);
+    cmd.pushConstants2(rt_push_constants_info);
 
     cmd.traceRaysKHR(res->sbt.get_rgen_region(),
                      res->sbt.get_rmiss_region(),
@@ -259,9 +360,23 @@ void Renderer::draw_frame(const Scene& scene) {
                      1);
 
     res->rt_image.transition_layout(cmd,
-                                    vk::ImageLayout::eTransferSrcOptimal,
-                                    vk::PipelineStageFlagBits2::eTransfer,
-                                    vk::AccessFlagBits2::eTransferRead);
+                                    vk::ImageLayout::eGeneral,
+                                    vk::PipelineStageFlagBits2::eComputeShader,
+                                    vk::AccessFlagBits2::eShaderStorageRead);
+
+    cmd.bindPipeline(vk::PipelineBindPoint::eCompute, res->compute_pipeline.get());
+    cmd.pushDescriptorSet(vk::PipelineBindPoint::eCompute, res->compute_pipeline.get_layout(), 0, compute_writes);
+    cmd.pushConstants2(compute_push_constants_info);
+
+    uint32_t group_count_x = (swapchain->get_extent().width + 16 - 1) / 16;
+    uint32_t group_count_y = (swapchain->get_extent().height + 16 - 1) / 16;
+
+    cmd.dispatch(group_count_x, group_count_y, 1);
+
+    res->out_image.transition_layout(cmd,
+                                     vk::ImageLayout::eTransferSrcOptimal,
+                                     vk::PipelineStageFlagBits2::eTransfer,
+                                     vk::AccessFlagBits2::eTransferRead);
 
     swapchain->get_images()[image_index].transition_layout(cmd,
                                                            vk::ImageLayout::eTransferDstOptimal,
@@ -275,7 +390,7 @@ void Renderer::draw_frame(const Scene& scene) {
                                swapchain->get_extent().height, 1},
     };
 
-    cmd.copyImage(res->rt_image.get(),
+    cmd.copyImage(res->out_image.get(),
                   vk::ImageLayout::eTransferSrcOptimal,
                   swapchain->get_images()[image_index].get(),
                   vk::ImageLayout::eTransferDstOptimal,
@@ -319,7 +434,12 @@ void Renderer::draw_frame(const Scene& scene) {
     res->rt_image.transition_layout(cmd,
                                     vk::ImageLayout::eGeneral,
                                     vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
-                                    vk::AccessFlagBits2::eShaderWrite);
+                                    vk::AccessFlagBits2::eShaderStorageRead | vk::AccessFlagBits2::eShaderStorageWrite);
+
+    res->out_image.transition_layout(cmd,
+                                     vk::ImageLayout::eGeneral,
+                                     vk::PipelineStageFlagBits2::eComputeShader,
+                                     vk::AccessFlagBits2::eShaderStorageWrite);
 
     encoder->end();
 
@@ -353,7 +473,12 @@ void Renderer::draw_frame(const Scene& scene) {
     ) {
         recreate();
     }
+
     frame_mgr->update();
+
+    if (!frame_reset) {
+        frame_count++;
+    }
 }
 
 void Renderer::recreate() {
@@ -365,9 +490,13 @@ void Renderer::recreate() {
 
     Gui::set_image_count(swapchain->get_image_count());
 
+    const auto single_time_encoder = SingleTimeEncoder(ctx.get_device());
+
+    // Ray Tracing Image
+
     res->rt_image = ImageBuilder()
                     .type(vk::ImageType::e2D)
-                    .format(swapchain->get_format())
+                    .format(res->rt_image.format_)
                     .size(swapchain->get_extent().width, swapchain->get_extent().height)
                     .mip_levels(1)
                     .layers(1)
@@ -375,24 +504,42 @@ void Renderer::recreate() {
                     .usage(vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc)
                     .build(ctx.get_allocator());
 
-    const auto single_time_encoder = SingleTimeEncoder(ctx.get_device());
-
     res->rt_image.transition_layout(single_time_encoder.get_cmd(),
                                     vk::ImageLayout::eGeneral,
                                     vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
-                                    vk::AccessFlagBits2::eShaderWrite);
+                                    vk::AccessFlagBits2::eShaderStorageRead | vk::AccessFlagBits2::eShaderStorageWrite);
+
+    // Out Image
+
+    res->out_image = ImageBuilder()
+                     .type(vk::ImageType::e2D)
+                     .format(res->out_image.format_)
+                     .size(swapchain->get_extent().width, swapchain->get_extent().height)
+                     .mip_levels(1)
+                     .layers(1)
+                     .samples(vk::SampleCountFlagBits::e1)
+                     .usage(vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc)
+                     .build(ctx.get_allocator());
+
+    res->out_image.transition_layout(single_time_encoder.get_cmd(),
+                                     vk::ImageLayout::eGeneral,
+                                     vk::PipelineStageFlagBits2::eComputeShader,
+                                     vk::AccessFlagBits2::eShaderStorageWrite);
 
     single_time_encoder.submit(ctx.get_device());
 
-    const vk::ImageViewCreateInfo rt_image_view_create_info{
-        .image = res->rt_image.get(),
-        .viewType = vk::ImageViewType::e2D,
-        .format = swapchain->get_format(),
-        .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
-    };
-    res->rt_image_view = ctx.get_device().get().createImageView(rt_image_view_create_info);
+    // Image views
+
+    res->rt_image_view =
+        ImageView(ctx.get_device(), res->rt_image, vk::ImageViewType::e2D, vk::ImageAspectFlagBits::eColor, 0, 1);
+
+    res->out_image_view =
+        ImageView(ctx.get_device(), res->out_image, vk::ImageViewType::e2D, vk::ImageAspectFlagBits::eColor, 0, 1);
+
+    frame_count = 1;
 }
 
-void Renderer::update_settings() const {
+void Renderer::update_settings() {
     memcpy(res->render_settings_buffer.mapped_ptr(), &res->render_settings, sizeof(RenderSettings));
+    frame_count = 1;
 }

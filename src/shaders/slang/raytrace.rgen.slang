@@ -41,12 +41,45 @@ float3 inferno_quintic(float x, float2 range) {
 	);
 }
 
+// source: https://www.reedbeta.com/blog/hash-functions-for-gpu-rendering/
+uint pcg_hash(uint seed) {
+    uint state = seed * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+float random(inout uint seed) {
+    seed = pcg_hash(seed);
+    return float(seed) * (1.0 / 4294967296.0);
+}
+
+float3 random_cosine_weighted_hemisphere(float3 normal, inout uint seed) {
+    float a = random(seed) * 2.0 * PI;
+    float z = random(seed) * 2.0 - 1.0;
+    float r = sqrt(1.0 - z * z);
+    float x = r * cos(a);
+    float y = r * sin(a);
+    return normalize(normal + float3(x, y, z));
+}
+
+void update_seed(inout uint seed, uint frame) {
+    seed = pcg_hash(uint(DispatchRaysIndex().x));
+    seed = pcg_hash(seed + uint(DispatchRaysIndex().y));
+    seed = pcg_hash(seed + uint(frame * 1000.0));
+}
+
 [shader("raygeneration")]
 void main() {
+    uint seed = 0;
+    update_seed(seed, uint(push_data.frame_count));
+
     uint2 launch_id = DispatchRaysIndex().xy; // Current pixel coords (x,y)
     uint2 launch_size = DispatchRaysDimensions().xy; // Image size (width, height)
 
     float2 uv = (float2(launch_id) + 0.5) / float2(launch_size) * 2.0 - 1.0; // NDC in range [-1, 1]
+
+    uv.x += (random(seed) - 0.5) * 0.002;
+    uv.y += (random(seed) - 0.5) * 0.002;
 
     float4 origin = mul(uniform.inv_view, float4(0.0, 0.0, 0.0, 1.0)); // Camera position
     float4 target = mul(uniform.inv_proj, float4(uv, 1.0, 1.0)); // View space target
@@ -58,22 +91,44 @@ void main() {
     ray.TMin = 0.001;
     ray.TMax = 10000.0;
 
-    Payload payload;
-    payload.color = float3(0.0, 0.0, 0.0);
+    float3 radiance = float3(0.0);
+    float3 energy = float3(1.0);
 
     RenderSettings render_settings = push_data.render_settings[0];
 
     if (render_settings.debug_channel == DebugChannel.Heatmap) {
+        Payload payload;
         uint64_t start = clockARB();
         TraceRay(tlas, RAY_FLAG_NONE, 0xFF, 0, 0, 0, ray, payload);
         uint64_t end = clockARB();
 
         uint64_t diff_raw = (end > start) ? (end - start) : 0;
         float diff = float(diff_raw);
-        payload.color = inferno_quintic(diff, float2(10000.0, 100000.0));
+        radiance = inferno_quintic(diff, float2(10000.0, 100000.0));
     } else {
-        TraceRay(tlas, RAY_FLAG_NONE, 0xFF, 0, 0, 0, ray, payload);
+        for (uint depth = 0; depth < 3; ++depth) {
+            Payload payload;
+            payload.hit = false;
+
+            TraceRay(tlas, RAY_FLAG_NONE, 0xFF, 0, 0, 0, ray, payload);
+
+            radiance += energy * payload.emission;
+
+            if (!payload.hit) break;
+
+            energy *= payload.albedo;
+
+            ray.Origin = payload.hitpos + (payload.normal * EPSILON);
+            ray.Direction = random_cosine_weighted_hemisphere(payload.normal, seed);
+        }
     }
 
-    out_image[int2(launch_id)] = float4(payload.color, 1.0);
+    float3 previous_radiance = out_image[int2(launch_id)].rgb;
+
+    float3 accumulated_radiance = radiance;
+    if (push_data.frame_count != 1) {
+        accumulated_radiance = lerp(previous_radiance, radiance, 1.0 / float(push_data.frame_count));
+    }
+
+    out_image[int2(launch_id)] = float4(accumulated_radiance, 1.0);
 }

@@ -13,8 +13,15 @@
     #define P(T) T*
 #endif
 
+#define PI 3.14159
+#define EPSILON 0.001
+
 struct Payload {
-    float3 color;
+    bool hit;
+    float3 normal;
+    float3 albedo;
+    float3 emission;
+    float3 hitpos;
 };
 
 struct Vertex {
@@ -83,4 +90,5 @@ struct RenderSettings {
 struct PushData {
     ScenePtrs scene_ptrs;
     P(RenderSettings) render_settings;
+    uint32_t frame_count;
 };

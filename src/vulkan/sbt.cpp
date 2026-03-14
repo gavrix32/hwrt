@@ -7,7 +7,7 @@ inline uint32_t align_up(const uint32_t size, const uint32_t alignment) {
     return size + alignment - 1 & ~(alignment - 1);
 }
 
-ShaderBindingTable::ShaderBindingTable(const Adapter& adapter, const Device& device, const Pipeline& pipeline,
+ShaderBindingTable::ShaderBindingTable(const Adapter& adapter, const Device& device, const RayTracingPipeline& pipeline,
                                        const Allocator& allocator) {
     const auto pipeline_props = adapter.get().getProperties2<
         vk::PhysicalDeviceProperties2,

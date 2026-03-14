@@ -3,7 +3,7 @@
 #include "buffer.h"
 
 class Adapter;
-class Pipeline;
+class RayTracingPipeline;
 
 class ShaderBindingTable {
     Buffer buffer;
@@ -12,7 +12,7 @@ class ShaderBindingTable {
     vk::StridedDeviceAddressRegionKHR hit_region{};
 
 public:
-    explicit ShaderBindingTable(const Adapter& adapter, const Device& device, const Pipeline& pipeline, const Allocator& allocator);
+    explicit ShaderBindingTable(const Adapter& adapter, const Device& device, const RayTracingPipeline& pipeline, const Allocator& allocator);
 
     // Move only
     ShaderBindingTable(const ShaderBindingTable&) = delete;

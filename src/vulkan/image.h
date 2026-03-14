@@ -104,5 +104,11 @@ public:
                        uint32_t base_mip_level,
                        uint32_t level_count);
 
+    // Move only
+    ImageView(const ImageView&) = delete;
+    ImageView& operator=(const ImageView&) = delete;
+    ImageView(ImageView&& other) noexcept = default;
+    ImageView& operator=(ImageView&& other) noexcept = default;
+
     [[nodiscard]] const vk::raii::ImageView& get() const { return handle; }
 };

@@ -24,6 +24,8 @@
 // TODO: И хелпер для staging buffers
 // TODO: удалить pipeline cache и узнать за сколько он создаётся
 // TODO: исправить краш при рендеринге пустой сцены
+// TODO: gltf camera
+// TODO: external model loading
 
 #ifdef NDEBUG
 constexpr bool validation = false;
@@ -139,6 +141,7 @@ int main() {
             static float slow_delta = 0.0f;
 
             ImGui::Text("Frametime: %.2f ms (%.0f FPS)", slow_delta * 1000.0f, 1.0f / slow_delta);
+            ImGui::Text("Accumulated Frames: %u", renderer.get_frame_count());
 
             const char* items[] = {"None",
                                    "Texcoord",

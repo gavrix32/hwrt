@@ -13,13 +13,18 @@
 struct Resources {
     vk::raii::SurfaceKHR surface;
 
-    vk::raii::DescriptorSetLayout descriptor_set_layout;
+    vk::raii::DescriptorSetLayout rt_descriptor_set_layout;
+    vk::raii::DescriptorSetLayout compute_descriptor_set_layout;
 
-    Pipeline rt_pipeline;
+    RayTracingPipeline rt_pipeline;
+    ComputePipeline compute_pipeline;
+
     ShaderBindingTable sbt;
 
     Image rt_image;
-    vk::raii::ImageView rt_image_view;
+    Image out_image;
+    ImageView rt_image_view;
+    ImageView out_image_view;
 
     RenderSettings render_settings;
     Buffer render_settings_buffer;
@@ -33,12 +38,14 @@ class Renderer {
     std::unique_ptr<FrameManager> frame_mgr;
     std::unique_ptr<Swapchain> swapchain;
 
+    uint32_t frame_count = 1;
+
 public:
     explicit Renderer(Context& ctx_);
 
     void draw_frame(const Scene& scene);
     void recreate();
-    void update_settings() const;
+    void update_settings();
 
     [[nodiscard]] RenderSettings& get_settings() const {
         return res->render_settings;
@@ -58,5 +65,9 @@ public:
 
     [[nodiscard]] Swapchain& get_swapchain() const {
         return *swapchain;
+    }
+
+    [[nodiscard]] uint32_t get_frame_count() const {
+        return frame_count;
     }
 };
