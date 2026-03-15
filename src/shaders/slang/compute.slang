@@ -6,7 +6,8 @@ RWTexture2D images[2];
 [[vk::push_constant]]
 PushData push_data;
 
-// TODO
+// Khronos PBR Neutral Tone Mapper
+// https://github.com/KhronosGroup/ToneMapping/blob/main/PBR_Neutral/README.md
 float3 neutral(float3 color) {
     const float start_compression = 0.8 - 0.04;
     const float desaturation = 0.15;

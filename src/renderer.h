@@ -46,6 +46,7 @@ public:
     void draw_frame(const Scene& scene);
     void recreate();
     void update_settings();
+    void reload_shaders();
 
     [[nodiscard]] RenderSettings& get_settings() const {
         return res->render_settings;

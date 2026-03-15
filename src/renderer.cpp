@@ -15,6 +15,44 @@
 #include "window.h"
 #include "vulkan/sbt.h"
 
+RayTracingPipeline create_rt_pipeline(const Context& ctx, const vk::raii::DescriptorSetLayout& layout) {
+    constexpr vk::PushConstantRange rt_push_constant_range{
+        .stageFlags = vk::ShaderStageFlagBits::eRaygenKHR |
+                      vk::ShaderStageFlagBits::eClosestHitKHR |
+                      vk::ShaderStageFlagBits::eAnyHitKHR,
+        .offset = 0,
+        .size = sizeof(PushData)
+    };
+
+    return RayTracingPipelineBuilder()
+           .rgen_group("../src/shaders/spirv/raytrace.rgen.spv")
+           .rmiss_group("../src/shaders/spirv/raytrace.rmiss.spv")
+           .hit_group("../src/shaders/spirv/raytrace.rchit.spv", std::nullopt)
+           .hit_group("../src/shaders/spirv/raytrace.rchit.spv", "../src/shaders/spirv/raytrace.rahit.spv")
+           .descriptor_set_layout(layout)
+           .descriptor_set_layout(ctx.get_bindless_layout())
+           .push_constant_range(rt_push_constant_range)
+           .build(ctx.get_device());
+}
+
+ComputePipeline create_compute_pipeline(const Context& ctx, const vk::raii::DescriptorSetLayout& layout) {
+    constexpr vk::PushConstantRange compute_push_constant_range{
+        .stageFlags = vk::ShaderStageFlagBits::eCompute,
+        .offset = 0,
+        .size = sizeof(PushData)
+    };
+
+    return ComputePipelineBuilder()
+           .stage("../src/shaders/spirv/compute.spv")
+           .descriptor_set_layout(layout)
+           .push_constant_range(compute_push_constant_range)
+           .build(ctx.get_device());
+}
+
+ShaderBindingTable create_sbt(const Context& ctx, const RayTracingPipeline& rt_pipeline) {
+    return ShaderBindingTable(ctx.get_adapter(), ctx.get_device(), rt_pipeline, ctx.get_allocator());
+}
+
 Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
     SCOPED_TIMER();
 
@@ -127,45 +165,17 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
     auto compute_push_descriptor_set_layout =
         ctx.get_device().get().createDescriptorSetLayout(compute_push_descriptor_set_layout_info);
 
-    // Push constant
-
-    vk::PushConstantRange rt_push_constant_range{
-        .stageFlags = vk::ShaderStageFlagBits::eRaygenKHR |
-                      vk::ShaderStageFlagBits::eClosestHitKHR |
-                      vk::ShaderStageFlagBits::eAnyHitKHR,
-        .offset = 0,
-        .size = sizeof(PushData)
-    };
-
-    vk::PushConstantRange compute_push_constant_range{
-        .stageFlags = vk::ShaderStageFlagBits::eCompute,
-        .offset = 0,
-        .size = sizeof(PushData)
-    };
-
     // Ray Tracing Pipeline
 
-    auto rt_pipeline = RayTracingPipelineBuilder()
-                       .rgen_group("../src/shaders/spirv/raytrace.rgen.spv")
-                       .rmiss_group("../src/shaders/spirv/raytrace.rmiss.spv")
-                       .hit_group("../src/shaders/spirv/raytrace.rchit.spv", std::nullopt)
-                       .hit_group("../src/shaders/spirv/raytrace.rchit.spv", "../src/shaders/spirv/raytrace.rahit.spv")
-                       .descriptor_set_layout(rt_push_descriptor_set_layout)
-                       .descriptor_set_layout(ctx.get_bindless_layout())
-                       .push_constant_range(rt_push_constant_range)
-                       .build(ctx.get_device());
+    auto rt_pipeline = create_rt_pipeline(ctx, rt_push_descriptor_set_layout);
 
     // Compute Pipeline
 
-    auto compute_pipeline = ComputePipelineBuilder()
-                            .stage("../src/shaders/spirv/compute.spv")
-                            .descriptor_set_layout(compute_push_descriptor_set_layout)
-                            .push_constant_range(compute_push_constant_range)
-                            .build(ctx.get_device());
+    auto compute_pipeline = create_compute_pipeline(ctx, compute_push_descriptor_set_layout);
 
     // Shader Binding Table
 
-    ShaderBindingTable sbt(ctx.get_adapter(), ctx.get_device(), rt_pipeline, ctx.get_allocator());
+    auto sbt = create_sbt(ctx, rt_pipeline);
 
     constexpr int frames_in_flight = 2;
 
@@ -541,5 +551,13 @@ void Renderer::recreate() {
 
 void Renderer::update_settings() {
     memcpy(res->render_settings_buffer.mapped_ptr(), &res->render_settings, sizeof(RenderSettings));
+    frame_count = 1;
+}
+
+void Renderer::reload_shaders() {
+    utils::run_bash_script("bash ../src/shaders/compile.sh");
+    res->rt_pipeline = create_rt_pipeline(ctx, res->rt_descriptor_set_layout);
+    res->compute_pipeline = create_compute_pipeline(ctx, res->compute_descriptor_set_layout);
+    res->sbt = create_sbt(ctx, res->rt_pipeline);
     frame_count = 1;
 }

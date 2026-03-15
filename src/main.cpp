@@ -16,13 +16,11 @@
 #define HEIGHT 720
 
 // TODO: Normal logging without macro
-// TODO: Shader hot reloading
 // TODO: Meshoptimizer?
 
 // TODO: Замена для stb image? долго грузит текстуры
 // TODO: Перенести scene storage буферы на GPU!!!
 // TODO: И хелпер для staging buffers
-// TODO: удалить pipeline cache и узнать за сколько он создаётся
 // TODO: исправить краш при рендеринге пустой сцены
 // TODO: gltf camera
 // TODO: external model loading
@@ -163,6 +161,9 @@ int main() {
             if (ImGui::Combo("Debug Channel", &current_item_index, items, IM_ARRAYSIZE(items))) {
                 renderer.get_settings().debug_channel = static_cast<DebugChannel>(current_item_index);
                 renderer.update_settings();
+            }
+            if (ImGui::Button("Reload Shaders (R)") || Input::key_released(GLFW_KEY_R)) {
+                renderer.reload_shaders();
             }
             ImGui::End();
 
