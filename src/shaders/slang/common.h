@@ -17,11 +17,10 @@
 #define EPSILON 0.001
 
 struct Payload {
-    bool hit;
     float3 normal;
-    float3 albedo;
+    float3 color;
     float3 emission;
-    float3 hitpos;
+    float depth;
 };
 
 struct Vertex {

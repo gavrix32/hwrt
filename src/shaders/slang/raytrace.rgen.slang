@@ -68,6 +68,17 @@ void update_seed(inout uint seed, uint frame) {
     seed = pcg_hash(seed + uint(frame * 1000.0));
 }
 
+float3 heatmap(RayDesc ray, float2 range) {
+    Payload payload;
+    uint64_t start = clockARB();
+    TraceRay(tlas, RAY_FLAG_NONE, 0xFF, 0, 0, 0, ray, payload);
+    uint64_t end = clockARB();
+
+    uint64_t diff_raw = (end > start) ? (end - start) : 0;
+    float diff = float(diff_raw);
+    return inferno_quintic(diff, range);
+}
+
 [shader("raygeneration")]
 void main() {
     uint seed = 0;
@@ -96,31 +107,31 @@ void main() {
 
     RenderSettings render_settings = push_data.render_settings[0];
 
-    if (render_settings.debug_channel == DebugChannel.Heatmap) {
-        Payload payload;
-        uint64_t start = clockARB();
-        TraceRay(tlas, RAY_FLAG_NONE, 0xFF, 0, 0, 0, ray, payload);
-        uint64_t end = clockARB();
-
-        uint64_t diff_raw = (end > start) ? (end - start) : 0;
-        float diff = float(diff_raw);
-        radiance = inferno_quintic(diff, float2(10000.0, 100000.0));
-    } else {
-        for (uint depth = 0; depth < 3; ++depth) {
+    if (render_settings.debug_channel == DebugChannel.None) {
+        for (uint depth = 0; depth < 4; ++depth) {
             Payload payload;
-            payload.hit = false;
+            payload.depth = -1.0;
 
             TraceRay(tlas, RAY_FLAG_NONE, 0xFF, 0, 0, 0, ray, payload);
 
             radiance += energy * payload.emission;
 
-            if (!payload.hit) break;
+            if (any(payload.emission > 0.0) || payload.depth == -1.0) break;
 
-            energy *= payload.albedo;
+            energy *= payload.color;
 
-            ray.Origin = payload.hitpos + (payload.normal * EPSILON);
+            float3 hitpos = ray.Origin + ray.Direction * payload.depth;
+
+            ray.Origin = hitpos + (payload.normal * EPSILON);
             ray.Direction = random_cosine_weighted_hemisphere(payload.normal, seed);
         }
+    } else if (render_settings.debug_channel == DebugChannel.Heatmap) {
+        radiance = heatmap(ray, float2(10000.0, 100000.0));
+    } else {
+        Payload payload;
+        payload.color = float3(0.0);
+        TraceRay(tlas, RAY_FLAG_NONE, 0xFF, 0, 0, 0, ray, payload);
+        radiance = payload.color;
     }
 
     float3 previous_radiance = out_image[int2(launch_id)].rgb;

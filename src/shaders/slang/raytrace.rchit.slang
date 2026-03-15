@@ -7,7 +7,6 @@ PushData push_data;
 Sampler2D textures[];
 
 struct Surface {
-    float3 hitpos;
     float3 geometry_normal;
     float3 geometry_tangent;
     float3 geometry_bitangent;
@@ -91,7 +90,9 @@ Surface get_surface(ScenePtrs scene, float3 bary) {
         s.local_normal.z * s.geometry_normal
     );
 
-    s.hitpos = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
+    //if (geometry.material_index >= 14 && geometry.material_index <= 20) {
+    //    s.emissive = s.albedo * 10.0;
+    //}
 
     return s;
 }
@@ -100,52 +101,33 @@ Surface get_surface(ScenePtrs scene, float3 bary) {
 void main(inout Payload payload, in BuiltInTriangleIntersectionAttributes attr) {
     ScenePtrs scene = push_data.scene_ptrs;
     float3 bary = float3(1.0 - attr.barycentrics.x - attr.barycentrics.y, attr.barycentrics.x, attr.barycentrics.y);
-    Surface surface = get_surface(scene, bary);
+    Surface s = get_surface(scene, bary);
 
-    //float3 L = normalize(float3(0.0, 1.0, 1.0) - surface.hitpos);
-    //float3 V = -WorldRayDirection();
-    //float3 N = surface.shading_normal;
-    //float3 R = reflect(-L, N);
+    float depth = RayTCurrent();
+    float3 hitpos = WorldRayOrigin() + WorldRayDirection() * depth;
 
-    //float3 light_color = float3(1.0, 1.0, 1.0);
-    //float shininess = 64.0;
+    RenderSettings render_settings = push_data.render_settings[0];
 
-    //float3 amb  = 0.1 * light_color;
-    //float3 diff = max(dot(N, L), 0.0) * light_color;
-    //float3 spec = pow(max(dot(R, V), 0.0), shininess) * light_color;
+    switch (render_settings.debug_channel) {
+        case DebugChannel.None: payload.color = s.albedo; break;
+        case DebugChannel.Texcoord: payload.color = float3(s.uv, 0.0); break;
+        case DebugChannel.Depth: payload.color = float3(depth, 0.0, 0.0); break;
+        case DebugChannel.Hitpos: payload.color = hitpos; break;
+        case DebugChannel.NormalTexture: payload.color = s.local_normal * 0.5 + 0.5; break;
+        case DebugChannel.GeometryNormal: payload.color = s.geometry_normal * 0.5 + 0.5; break;
+        case DebugChannel.GeometryTangent: payload.color = s.geometry_tangent * 0.5 + 0.5; break;
+        case DebugChannel.GeometryBitangent: payload.color = s.geometry_bitangent * 0.5 + 0.5; break;
+        case DebugChannel.GeometryTangentW: payload.color = float3(s.tangent_w); break;
+        case DebugChannel.ShadingNormal: payload.color = s.shading_normal * 0.5 + 0.5; break;
+        case DebugChannel.Alpha: payload.color = float3(s.alpha); break;
+        case DebugChannel.Emissive: payload.color = s.emissive; break;
+        case DebugChannel.BaseColor: payload.color = s.albedo; break;
+        case DebugChannel.Metallic: payload.color = float3(s.metallic); break;
+        case DebugChannel.Roughness: payload.color = float3(s.roughness); break;
+        case DebugChannel.Heatmap: payload.color = float3(0.0); break;
+    }
 
-    //float3 final_color = (amb + diff + spec) * surface.albedo;
-
-    //RenderSettings render_settings = push_data.render_settings[0];
-
-    //bool use_gamma_correction = false;
-
-    //switch (render_settings.debug_channel) {
-    //    case DebugChannel.None: payload.color = final_color; use_gamma_correction = true; break;
-    //    case DebugChannel.Texcoord: payload.color = float3(surface.uv, 0.0); break;
-    //    case DebugChannel.Depth: payload.color = float3(RayTCurrent(), 0.0, 0.0); break;
-    //    case DebugChannel.Hitpos: payload.color = surface.hitpos; break;
-    //    case DebugChannel.NormalTexture: payload.color = surface.local_normal * 0.5 + 0.5; break;
-    //    case DebugChannel.GeometryNormal: payload.color = surface.geometry_normal * 0.5 + 0.5; break;
-    //    case DebugChannel.GeometryTangent: payload.color = surface.geometry_tangent * 0.5 + 0.5; break;
-    //    case DebugChannel.GeometryBitangent: payload.color = surface.geometry_bitangent * 0.5 + 0.5; break;
-    //    case DebugChannel.GeometryTangentW: payload.color = float3(surface.tangent_w); break;
-    //    case DebugChannel.ShadingNormal: payload.color = surface.shading_normal * 0.5 + 0.5; break;
-    //    case DebugChannel.Alpha: payload.color = float3(surface.alpha); break;
-    //    case DebugChannel.Emissive: payload.color = surface.emissive; break;
-    //    case DebugChannel.BaseColor: payload.color = surface.albedo; use_gamma_correction = true; break;
-    //    case DebugChannel.Metallic: payload.color = float3(surface.metallic); break;
-    //    case DebugChannel.Roughness: payload.color = float3(surface.roughness); break;
-    //    case DebugChannel.Heatmap: payload.color = float3(0.0); break;
-    //}
-
-    //if (use_gamma_correction) {
-    //    payload.color = pow(payload.color, 1.0 / 2.2);
-    //}
-
-    payload.hit = true;
-    payload.normal = surface.shading_normal;
-    payload.albedo = surface.albedo;
-    payload.emission = surface.emissive;
-    payload.hitpos = surface.hitpos;
+    payload.normal = s.shading_normal;
+    payload.emission = s.emissive;
+    payload.depth = RayTCurrent();
 }

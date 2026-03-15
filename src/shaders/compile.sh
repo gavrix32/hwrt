@@ -1,7 +1,6 @@
 #!/bin/bash
 
 SHADER_DIR="$(cd "$(dirname "$0")" && pwd)/slang"
-COMMON_FILE="$SHADER_DIR/common.h"
 OUTPUT_DIR="$SHADER_DIR/../spirv"
 
 mkdir -p "$OUTPUT_DIR"
