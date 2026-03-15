@@ -555,6 +555,7 @@ void Renderer::update_settings() {
 }
 
 void Renderer::reload_shaders() {
+    ctx.get_device().get().waitIdle();
     utils::run_bash_script("bash ../src/shaders/compile.sh");
     res->rt_pipeline = create_rt_pipeline(ctx, res->rt_descriptor_set_layout);
     res->compute_pipeline = create_compute_pipeline(ctx, res->compute_descriptor_set_layout);

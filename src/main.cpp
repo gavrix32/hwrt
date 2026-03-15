@@ -26,7 +26,7 @@
 // TODO: external model loading
 
 #ifdef NDEBUG
-constexpr bool validation = false;
+constexpr bool validation = true;
 #else
 constexpr bool validation = true;
 #endif
