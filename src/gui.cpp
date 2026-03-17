@@ -7,6 +7,7 @@
 #include "context.h"
 #include "window.h"
 #include "vulkan/swapchain.h"
+#include "vulkan/utils.h"
 
 void apply_theme() {
     ImVec4* colors = ImGui::GetStyle().Colors;
@@ -102,7 +103,11 @@ void Gui::init(const Context& ctx, const Swapchain& swapchain) {
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 
-    io.Fonts->AddFontFromFileTTF((std::string(ASSETS_DIR) + "fonts/Inter_18pt-Regular.ttf").c_str(), 18.0f);
+    const auto exec_path = utils::get_exec_path();
+    const auto build_dir = exec_path.parent_path();
+    const auto assets_dir = build_dir.parent_path() / "assets";
+
+    io.Fonts->AddFontFromFileTTF((assets_dir / "fonts" / "Inter_18pt-Regular.ttf").c_str(), 18.0f);
 
     apply_theme();
 

@@ -130,7 +130,7 @@ void Scene::build_blases(const Context& ctx) {
                       .build(ctx.get_allocator());
 
     memcpy(vertex_buffer.mapped_ptr(), vertices.data(), vertices.size() * sizeof(Vertex));
-    memcpy(index_buffer.mapped_ptr(), indices.data(), indices.size() * sizeof(u_int32_t));
+    memcpy(index_buffer.mapped_ptr(), indices.data(), indices.size() * sizeof(uint32_t));
     memcpy(material_buffer.mapped_ptr(), materials.data(), materials.size() * sizeof(Material));
     memcpy(geometry_buffer.mapped_ptr(), geometries.data(), geometries.size() * sizeof(Geometry));
 

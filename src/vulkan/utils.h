@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <string>
+#include <filesystem>
 
 #include <spdlog/spdlog.h>
 
@@ -26,12 +27,14 @@ public:
     }
 };
 
-#ifdef _WIN32
-    #define POPEN _popen
-    #define PCLOSE _pclose
-#else
+#ifdef __linux__
     #define POPEN popen
     #define PCLOSE pclose
+    #include <unistd.h>
+#else
+    #define POPEN _popen
+    #define PCLOSE _pclose
+    #include <windows.h>
 #endif
 
 namespace utils {
@@ -62,5 +65,17 @@ namespace utils {
                 spdlog::error("Last message: {}", output_lines.back());
             }
         }
+    }
+
+    inline std::filesystem::path get_exec_path() {
+        char buffer[1024];
+        #if __linux__
+            ssize_t count = readlink("/proc/self/exe", buffer, sizeof(buffer));
+            if (count != -1) buffer[count] = '\0';
+        #else
+            GetModuleFileNameA(NULL, buffer, sizeof(buffer));
+        #endif
+
+        return {buffer};
     }
 }

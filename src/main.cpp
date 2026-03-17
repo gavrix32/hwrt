@@ -22,6 +22,7 @@
 // TODO: Замена для stb image? долго грузит текстуры
 // TODO: Перенести scene storage буферы на GPU!!!
 // TODO: И хелпер для staging buffers
+// TODO: ABeautifulGame -> CornellBox model in github
 
 int main(const int argc, char* argv[]) {
     spdlog::set_level(spdlog::level::info);

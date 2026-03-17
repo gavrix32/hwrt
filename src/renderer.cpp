@@ -24,11 +24,15 @@ RayTracingPipeline create_rt_pipeline(const Context& ctx, const vk::raii::Descri
         .size = sizeof(PushData)
     };
 
+    const auto exec_path = utils::get_exec_path();
+    const auto build_dir = exec_path.parent_path();
+    const auto spirv_dir = build_dir.parent_path() / "src" / "shaders" / "spirv";
+
     return RayTracingPipelineBuilder()
-           .rgen_group(std::string(SHADERS_DIR) + "spirv/raytrace.rgen.spv")
-           .rmiss_group(std::string(SHADERS_DIR) + "spirv/raytrace.rmiss.spv")
-           .hit_group(std::string(SHADERS_DIR) + "spirv/raytrace.rchit.spv", std::nullopt)
-           .hit_group(std::string(SHADERS_DIR) + "spirv/raytrace.rchit.spv", std::string(SHADERS_DIR) + "spirv/raytrace.rahit.spv")
+           .rgen_group(spirv_dir / "raytrace.rgen.spv")
+           .rmiss_group(spirv_dir / "raytrace.rmiss.spv")
+           .hit_group(spirv_dir / "raytrace.rchit.spv", std::nullopt)
+           .hit_group(spirv_dir / "raytrace.rchit.spv", spirv_dir / "raytrace.rahit.spv")
            .descriptor_set_layout(layout)
            .descriptor_set_layout(ctx.get_bindless_layout())
            .push_constant_range(rt_push_constant_range)
@@ -42,8 +46,12 @@ ComputePipeline create_compute_pipeline(const Context& ctx, const vk::raii::Desc
         .size = sizeof(PushData)
     };
 
+    const auto exec_path = utils::get_exec_path();
+    const auto build_dir = exec_path.parent_path();
+    const auto spirv_dir = build_dir.parent_path() / "src" / "shaders" / "spirv";
+
     return ComputePipelineBuilder()
-           .stage(std::string(SHADERS_DIR) + "spirv/compute.spv")
+           .stage(spirv_dir / "compute.spv")
            .descriptor_set_layout(layout)
            .push_constant_range(compute_push_constant_range)
            .build(ctx.get_device());
@@ -556,7 +564,12 @@ void Renderer::update_settings() {
 
 void Renderer::reload_shaders() {
     ctx.get_device().get().waitIdle();
-    utils::run_bash_script("bash " + std::string(SHADERS_DIR) + "compile.sh");
+
+    const auto exec_path = utils::get_exec_path();
+    const auto build_dir = exec_path.parent_path();
+    const auto shader_dir = build_dir.parent_path() / "src" / "shaders";
+
+    utils::run_bash_script("bash " + (shader_dir / "compile.sh").string());
     res->rt_pipeline = create_rt_pipeline(ctx, res->rt_descriptor_set_layout);
     res->compute_pipeline = create_compute_pipeline(ctx, res->compute_descriptor_set_layout);
     res->sbt = create_sbt(ctx, res->rt_pipeline);
