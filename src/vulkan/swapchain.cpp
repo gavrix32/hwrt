@@ -43,8 +43,11 @@ vk::PresentModeKHR choose_present_mode(const std::vector<vk::PresentModeKHR>& av
     return available_present_modes[0];
 }
 
-Swapchain::Swapchain(const Adapter& adapter, const Device& device,
-                     GLFWwindow* window, const vk::SurfaceKHR& surface)
+Swapchain::Swapchain(const Adapter& adapter,
+                     const Device& device,
+                     GLFWwindow* window,
+                     const vk::SurfaceKHR& surface,
+                     const vk::raii::SwapchainKHR& old_handle)
     : handle(nullptr) {
     const auto surface_capabilities = adapter.get().getSurfaceCapabilitiesKHR(surface);
 
@@ -64,6 +67,7 @@ Swapchain::Swapchain(const Adapter& adapter, const Device& device,
         .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
         .presentMode = choose_present_mode(adapter.get().getSurfacePresentModesKHR(surface)),
         .clipped = true,
+        .oldSwapchain = old_handle
     };
 
     handle = vk::raii::SwapchainKHR(device.get(), swapchain_create_info);

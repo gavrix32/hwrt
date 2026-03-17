@@ -18,7 +18,10 @@ class Swapchain {
     std::vector<ImageView> image_views;
 
 public:
-    explicit Swapchain(const Adapter& adapter, const Device& device, GLFWwindow* window, const vk::SurfaceKHR& surface);
+    explicit Swapchain(const Adapter& adapter,
+                       const Device& device, GLFWwindow* window,
+                       const vk::SurfaceKHR& surface,
+                       const vk::raii::SwapchainKHR& old_handle);
 
     [[nodiscard]] vk::Extent2D get_extent() const {
         return extent;

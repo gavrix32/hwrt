@@ -106,8 +106,9 @@ void Gui::init(const Context& ctx, const Swapchain& swapchain) {
     const auto exec_path = utils::get_exec_path();
     const auto build_dir = exec_path.parent_path();
     const auto assets_dir = build_dir.parent_path() / "assets";
+    const auto font_path = (assets_dir / "fonts" / "Inter_18pt-Regular.ttf").string();
 
-    io.Fonts->AddFontFromFileTTF((assets_dir / "fonts" / "Inter_18pt-Regular.ttf").c_str(), 18.0f);
+    io.Fonts->AddFontFromFileTTF(font_path.c_str(), 18.0f);
 
     apply_theme();
 

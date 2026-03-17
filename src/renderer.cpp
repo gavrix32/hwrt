@@ -29,10 +29,10 @@ RayTracingPipeline create_rt_pipeline(const Context& ctx, const vk::raii::Descri
     const auto spirv_dir = build_dir.parent_path() / "src" / "shaders" / "spirv";
 
     return RayTracingPipelineBuilder()
-           .rgen_group(spirv_dir / "raytrace.rgen.spv")
-           .rmiss_group(spirv_dir / "raytrace.rmiss.spv")
-           .hit_group(spirv_dir / "raytrace.rchit.spv", std::nullopt)
-           .hit_group(spirv_dir / "raytrace.rchit.spv", spirv_dir / "raytrace.rahit.spv")
+           .rgen_group((spirv_dir / "raytrace.rgen.spv").string())
+           .rmiss_group((spirv_dir / "raytrace.rmiss.spv").string())
+           .hit_group((spirv_dir / "raytrace.rchit.spv").string(), std::nullopt)
+           .hit_group((spirv_dir / "raytrace.rchit.spv").string(), (spirv_dir / "raytrace.rahit.spv").string())
            .descriptor_set_layout(layout)
            .descriptor_set_layout(ctx.get_bindless_layout())
            .push_constant_range(rt_push_constant_range)
@@ -51,7 +51,7 @@ ComputePipeline create_compute_pipeline(const Context& ctx, const vk::raii::Desc
     const auto spirv_dir = build_dir.parent_path() / "src" / "shaders" / "spirv";
 
     return ComputePipelineBuilder()
-           .stage(spirv_dir / "compute.spv")
+           .stage((spirv_dir / "compute.spv").string())
            .descriptor_set_layout(layout)
            .push_constant_range(compute_push_constant_range)
            .build(ctx.get_device());
@@ -70,7 +70,7 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
     }
     auto surface = vk::raii::SurfaceKHR(ctx.get_instance().get(), surface_);
 
-    swapchain = std::make_unique<Swapchain>(ctx.get_adapter(), ctx.get_device(), Window::get(), surface);
+    swapchain = std::make_unique<Swapchain>(ctx.get_adapter(), ctx.get_device(), Window::get(), surface, nullptr);
 
     auto single_time_encoder = SingleTimeEncoder(ctx.get_device());
 
@@ -504,7 +504,9 @@ void Renderer::recreate() {
 
     ctx.get_device().get().waitIdle();
 
-    swapchain = std::make_unique<Swapchain>(ctx.get_adapter(), ctx.get_device(), Window::get(), res->surface);
+    const auto old_swapchain = std::move(swapchain);
+
+    swapchain = std::make_unique<Swapchain>(ctx.get_adapter(), ctx.get_device(), Window::get(), res->surface, old_swapchain->get());
 
     Gui::set_image_count(swapchain->get_image_count());
 

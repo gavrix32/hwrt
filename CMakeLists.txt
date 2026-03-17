@@ -132,3 +132,7 @@ target_compile_definitions(hwrt PRIVATE
         GLM_FORCE_RADIANS
         GLM_ENABLE_EXPERIMENTAL
 )
+
+if (MINGW)
+    target_link_options(hwrt PRIVATE -static)
+endif ()
