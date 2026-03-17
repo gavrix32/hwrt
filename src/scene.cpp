@@ -91,6 +91,8 @@ void Scene::add_instance(const std::shared_ptr<Model>& model, const glm::mat4& t
 void Scene::build_blases(const Context& ctx) {
     spdlog::info("Building blases...");
 
+    if (blases.empty()) return;
+
     if (materials.empty()) {
         materials.push_back(Material{});
     }

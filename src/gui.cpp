@@ -102,7 +102,7 @@ void Gui::init(const Context& ctx, const Swapchain& swapchain) {
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 
-    io.Fonts->AddFontFromFileTTF("../assets/fonts/Inter_18pt-Regular.ttf", 18.0f);
+    io.Fonts->AddFontFromFileTTF((std::string(ASSETS_DIR) + "fonts/Inter_18pt-Regular.ttf").c_str(), 18.0f);
 
     apply_theme();
 

@@ -4,7 +4,9 @@
 #include "fastgltf/core.hpp"
 #include "vulkan/utils.h"
 
-std::shared_ptr<Model> AssetManager::get_model(const std::filesystem::path& path) {
+std::shared_ptr<Model> AssetManager::get_model(std::filesystem::path path) {
+    path = std::filesystem::absolute(path);
+
     if (const auto it = models_cache.find(path); it != models_cache.end()) {
         spdlog::info("AssetManager: Loading from cache: {}", path.string());
         return it->second;

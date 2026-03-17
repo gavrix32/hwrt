@@ -131,4 +131,6 @@ target_compile_definitions(hwrt PRIVATE
         GLM_FORCE_DEPTH_ZERO_TO_ONE
         GLM_FORCE_RADIANS
         GLM_ENABLE_EXPERIMENTAL
+        SHADERS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/shaders/"
+        ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets/"
 )

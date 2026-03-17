@@ -94,6 +94,10 @@ Surface get_surface(ScenePtrs scene, float3 bary) {
     //    s.emissive = s.albedo * 10.0;
     //}
 
+    //if (geometry.material_index >= 27 && geometry.material_index <= 27) {
+    //    s.emissive = s.albedo * 1.0;
+    //}
+
     return s;
 }
 

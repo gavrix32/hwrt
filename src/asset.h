@@ -10,5 +10,5 @@ class AssetManager {
 
 public:
     AssetManager() = default;
-    std::shared_ptr<Model> get_model(const std::filesystem::path& path);
+    std::shared_ptr<Model> get_model(std::filesystem::path path);
 };

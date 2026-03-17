@@ -48,7 +48,8 @@ Device::Device(const Adapter& adapter, const std::vector<const char*>& required_
                        vk::PhysicalDeviceVulkan14Features,
                        vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
                        vk::PhysicalDeviceRayTracingPipelineFeaturesKHR,
-                       vk::PhysicalDeviceShaderClockFeaturesKHR> features_chain;
+                       vk::PhysicalDeviceShaderClockFeaturesKHR,
+                       vk::PhysicalDeviceRobustness2FeaturesKHR> features_chain;
 
     features_chain.get<vk::PhysicalDeviceVulkan12Features>().scalarBlockLayout = vk::True;
     features_chain.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress = vk::True;
@@ -63,6 +64,7 @@ Device::Device(const Adapter& adapter, const std::vector<const char*>& required_
     features_chain.get<vk::PhysicalDeviceFeatures2>().features.shaderInt64 = vk::True;
     features_chain.get<vk::PhysicalDeviceShaderClockFeaturesKHR>().shaderDeviceClock = vk::True;
     features_chain.get<vk::PhysicalDeviceShaderClockFeaturesKHR>().shaderSubgroupClock = vk::True;
+    features_chain.get<vk::PhysicalDeviceRobustness2FeaturesKHR>().nullDescriptor = vk::True;
 
     const vk::DeviceCreateInfo device_create_info{
         .pNext = &features_chain.get<vk::PhysicalDeviceFeatures2>(),

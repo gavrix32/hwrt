@@ -1,5 +1,6 @@
 #include <spdlog/spdlog.h>
 
+#include <iostream>
 #include <random>
 
 #include "asset.h"
@@ -21,22 +22,42 @@
 // TODO: Замена для stb image? долго грузит текстуры
 // TODO: Перенести scene storage буферы на GPU!!!
 // TODO: И хелпер для staging buffers
-// TODO: исправить краш при рендеринге пустой сцены
-// TODO: gltf camera
-// TODO: external model loading
 
-#ifdef NDEBUG
-constexpr bool validation = true;
-#else
-constexpr bool validation = true;
-#endif
-
-int main() {
-#ifdef NDEBUG
+int main(const int argc, char* argv[]) {
     spdlog::set_level(spdlog::level::info);
-#else
-    spdlog::set_level(spdlog::level::trace);
-#endif
+
+    bool validation = false;
+
+    std::vector<std::string> args(argv, argv + argc);
+
+    std::string arg_model_path;
+
+    for (size_t i = 1; i < args.size(); ++i) {
+        if (args[i] == "-h" || args[i] == "--help") {
+            std::cout << "Usage: hwrt [OPTIONS]\n"
+                << "Options:\n"
+                << "  -h, --help          Display this help message and exit\n"
+                << "  -v, --validation    Enable Vulkan validation validation layers\n"
+                << "  -m, --model <FILE>  Load .glb model from the specified path\n";
+            return 0;
+        }
+        if (args[i] == "-v" || args[i] == "--validation") {
+            validation = true;
+        } else if (args[i] == "-m" || args[i] == "--model") {
+            if (i + 1 < args.size()) {
+                arg_model_path = args[i + 1];
+                i++;
+            } else {
+                std::cerr << "Error: " << args[i] << " requires a file path argument\n"
+                    << "Try 'hwrt --help' for more information\n";
+                return 1;
+            }
+        } else {
+            std::cerr << "Error: unknown option '" << args[i] << "'\n"
+                << "Try 'hwrt --help' for more information.\n";
+            return 1;
+        }
+    }
 
     Window::init(WIDTH, HEIGHT, "hwrt");
     Window::hide();
@@ -50,14 +71,20 @@ int main() {
 
         AssetManager asset_manager;
 
-        const auto model = asset_manager.get_model("../assets/models/sponza.glb");
+        //const auto model = asset_manager.get_model("../assets/models/sponza.glb");
 
         auto camera = Camera();
         camera.set_pos(glm::vec3(0.0f, 0.0f, 1.0f));
 
         Scene scene;
         scene.set_camera(camera);
-        scene.add_instance(model, glm::mat4(1.0f), ctx);
+        //scene.add_instance(model, glm::mat4(1.0f), ctx);
+
+        //glm::scale(glm::mat4(1.0f), glm::vec3(0.01f)
+
+        if (!arg_model_path.empty()) {
+            scene.add_instance(asset_manager.get_model(arg_model_path), glm::mat4(1.0f), ctx);
+        }
 
         std::default_random_engine generator;
         std::uniform_real_distribution distribution(0.0f, 360.0f);
