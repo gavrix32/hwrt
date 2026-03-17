@@ -13,16 +13,16 @@ void Window::init(int width, int height, const std::string& title) {
     height_ = height;
     resized = false;
 
+#ifdef __linux__
     glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
+#endif
 
     if (!glfwInit()) {
         spdlog::critical("Failed to initialize GLFW");
         throw std::runtime_error("Failed to initialize GLFW");
     }
 
-#ifdef __linux__
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-#endif
 
     handle = glfwCreateWindow(width, height, title.c_str(), nullptr, nullptr);
 
