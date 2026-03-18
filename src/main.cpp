@@ -31,7 +31,7 @@ int main(const int argc, char* argv[]) {
 
     std::vector<std::string> args(argv, argv + argc);
 
-    std::string arg_model_path;
+    std::vector<std::string> arg_model_paths;
 
     for (size_t i = 1; i < args.size(); ++i) {
         if (args[i] == "-h" || args[i] == "--help") {
@@ -46,7 +46,7 @@ int main(const int argc, char* argv[]) {
             validation = true;
         } else if (args[i] == "-m" || args[i] == "--model") {
             if (i + 1 < args.size()) {
-                arg_model_path = args[i + 1];
+                arg_model_paths.push_back(args[i + 1]);
                 i++;
             } else {
                 std::cerr << "Error: " << args[i] << " requires a file path argument\n"
@@ -83,8 +83,8 @@ int main(const int argc, char* argv[]) {
 
         //glm::scale(glm::mat4(1.0f), glm::vec3(0.01f)
 
-        if (!arg_model_path.empty()) {
-            scene.add_instance(asset_manager.get_model(arg_model_path), glm::mat4(1.0f), ctx);
+        for (auto& path : arg_model_paths) {
+            scene.add_instance(asset_manager.get_model(path), glm::mat4(1.0f), ctx);
         }
 
         std::default_random_engine generator;

@@ -30,6 +30,12 @@ struct Vertex {
     float2 texcoord;
 };
 
+enum class AlphaMode : uint32_t {
+    Opaque = 0,
+    Mask = 1,
+    Blend = 2
+};
+
 struct Material {
     uint32_t albedo_index = UINT32_MAX;
     float4 base_color_factor;
@@ -44,7 +50,7 @@ struct Material {
     uint32_t emissive_index = UINT32_MAX;
     float3 emissive_factor;
 
-    uint32_t alpha_mode;
+    AlphaMode alpha_mode;
     float alpha_cutoff;
 };
 

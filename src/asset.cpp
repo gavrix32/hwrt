@@ -25,7 +25,7 @@ std::shared_ptr<Model> AssetManager::get_model(std::filesystem::path path) {
 
     fastgltf::GltfDataBuffer data = std::move(data_result.get());
 
-    fastgltf::Parser parser;
+    fastgltf::Parser parser(static_cast<fastgltf::Extensions>(std::numeric_limits<std::uint64_t>::max()));
 
     constexpr auto gltf_options = fastgltf::Options::LoadExternalBuffers |
                                   fastgltf::Options::DecomposeNodeMatrices;
@@ -37,6 +37,11 @@ std::shared_ptr<Model> AssetManager::get_model(std::filesystem::path path) {
     }
 
     const fastgltf::Asset asset = std::move(asset_result.get());
+
+    spdlog::info("Required glTF extensions:");
+    for (auto& ext : asset.extensionsRequired) {
+        spdlog::info(" - " + ext);
+    }
 
     models_cache[path] = std::make_shared<Model>(asset);
     return models_cache[path];

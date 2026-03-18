@@ -12,7 +12,7 @@ public:
     int channels = 0;
 
     uint32_t metadata_flags = 0;
-    static constexpr uint32_t FlagPlaceholder = 1 << 0;
+    static constexpr uint32_t NearestFilter = 1 << 0;
 
     TextureData() = default;
 

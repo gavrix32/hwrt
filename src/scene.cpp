@@ -174,8 +174,7 @@ void Scene::build_blases(const Context& ctx) {
 
             auto geometry_flags = vk::GeometryFlagBitsKHR::eOpaque;
 
-            // alpha_mode == AlphaMode::Mask
-            if (materials[geometry.material_index].alpha_mode == 1) {
+            if (materials[geometry.material_index].alpha_mode != AlphaMode::Opaque) {
                 geometry_flags = {};
             }
 
@@ -255,8 +254,7 @@ void Scene::build_tlas(const Context& ctx) {
                 uint32_t geometry_idx = blas.geometry_offset + i;
                 const auto& material = materials[geometries[geometry_idx].material_index];
 
-                // alpha_mode == AlphaMode::Mask
-                if (material.alpha_mode == 1) {
+                if (material.alpha_mode != AlphaMode::Opaque) {
                     sbt_offset = 1;
                     break;
                 }

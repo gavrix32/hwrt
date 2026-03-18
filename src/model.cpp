@@ -115,7 +115,7 @@ TextureData create_placeholder_texture() {
     tex.height = 2;
     tex.channels = 4;
     tex.data = static_cast<unsigned char*>(malloc(tex.width * tex.height * 4));
-    tex.metadata_flags = TextureData::FlagPlaceholder;
+    tex.metadata_flags = TextureData::NearestFilter;
 
     if (tex.data) {
         tex.data[0] = 255;
@@ -215,7 +215,7 @@ void Model::process_material(const fastgltf::Asset& asset, const fastgltf::Mater
     }
     material.emissive_factor = glm::make_vec3(gltf_material.emissiveFactor.data());
 
-    material.alpha_mode = static_cast<uint32_t>(gltf_material.alphaMode);
+    material.alpha_mode = static_cast<AlphaMode>(gltf_material.alphaMode);
     material.alpha_cutoff = gltf_material.alphaCutoff;
 
     materials.emplace_back(material);

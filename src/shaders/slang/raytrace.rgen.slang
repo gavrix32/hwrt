@@ -101,6 +101,7 @@ void main() {
     ray.Direction = direction.xyz;
     ray.TMin = 0.001;
     ray.TMax = 10000.0;
+    // TODO: чекать это tmax вместо -1
 
     float3 radiance = float3(0.0);
     float3 energy = float3(1.0);
@@ -121,6 +122,10 @@ void main() {
             energy *= payload.color;
 
             float3 hitpos = ray.Origin + ray.Direction * payload.depth;
+
+            //if (dot(ray.Direction, payload.normal) > 0.0) {
+            //    payload.normal = -payload.normal;
+            //}
 
             ray.Origin = hitpos + (payload.normal * EPSILON);
             ray.Direction = random_cosine_weighted_hemisphere(payload.normal, seed);
