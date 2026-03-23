@@ -84,11 +84,15 @@ Surface get_surface(ScenePtrs scene, float3 bary) {
         s.emissive = material.emissive_factor;
     }
 
-    s.shading_normal = normalize(
-        s.local_normal.x * s.geometry_tangent +
-        s.local_normal.y * s.geometry_bitangent +
-        s.local_normal.z * s.geometry_normal
-    );
+    if (material.normal_index != UINT32_MAX) {
+        s.shading_normal = normalize(
+            s.local_normal.x * s.geometry_tangent +
+            s.local_normal.y * s.geometry_bitangent +
+            s.local_normal.z * s.geometry_normal
+        );
+    } else {
+        s.shading_normal = s.geometry_normal;
+    }
 
     //if (geometry.material_index >= 14 && geometry.material_index <= 20) {
     //    s.emissive = s.albedo * 10.0;

@@ -72,6 +72,10 @@ public:
         return images;
     }
 
+    [[nodiscard]] const std::vector<ModelInstance>& get_instances() const {
+        return model_instances;
+    }
+
     [[nodiscard]] const ScenePtrs& get_scene_ptrs() const {
         return scene_ptrs;
     }

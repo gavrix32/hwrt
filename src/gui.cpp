@@ -92,6 +92,7 @@ void apply_theme() {
     style.GrabRounding = 3;
     style.LogSliderDeadzone = 4;
     style.TabRounding = 4;
+    style.TreeLinesFlags = ImGuiTreeNodeFlags_DrawLinesToNodes;
 }
 
 void Gui::init(const Context& ctx, const Swapchain& swapchain) {

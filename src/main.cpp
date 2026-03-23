@@ -11,6 +11,7 @@
 #include "renderer.h"
 #include "timer.h"
 #include "window.h"
+#include "glm/gtx/matrix_decompose.hpp"
 #include "vulkan/device.h"
 
 #define WIDTH 1280
@@ -23,6 +24,55 @@
 // TODO: Перенести scene storage буферы на GPU!!!
 // TODO: И хелпер для staging buffers
 // TODO: ABeautifulGame -> CornellBox model in github
+
+void show_scene_graph(const Scene& scene) {
+    // Instance -> Node -> Mesh -> Primitive
+    ImGui::Begin("Scene Graph");
+    auto& instances = scene.get_instances();
+    for (size_t i = 0; i < instances.size(); ++i) {
+        if (ImGui::TreeNode(reinterpret_cast<void*>(i), "Instance %zu", i)) {
+            auto& model = instances[i].model;
+
+            auto& nodes = model->nodes;
+            // auto& materials = model->materials;
+            for (size_t j = 0; j < nodes.size(); ++j) {
+                if (ImGui::TreeNode(reinterpret_cast<void*>(j), "Node %zu", j)) {
+                    const auto mesh_index = nodes[j].mesh_index;
+                    ImGui::Text("Mesh %u", mesh_index); // TODO: Mesh selector
+
+                    const auto& transform = nodes[j].transform;
+
+                    glm::vec3 scale;
+                    glm::quat orientation;
+                    glm::vec3 translation;
+                    glm::vec3 skew;
+                    glm::vec4 perspective;
+                    glm::decompose(transform, scale, orientation, translation, skew, perspective);
+
+                    glm::vec3 rotation = glm::eulerAngles(orientation);
+
+                    ImGui::DragFloat3("Translation", &translation[0]);
+                    ImGui::DragFloat3("Rotation", &rotation[0]);
+                    ImGui::DragFloat3("Scale", &scale[0]);
+
+                    auto& mesh = model->meshes[mesh_index];
+                    auto& primitives = mesh.primitives;
+                    for (size_t k = 0; k < primitives.size(); ++k) {
+                        if (ImGui::TreeNode(reinterpret_cast<void*>(j), "Primitive %zu", k)) {
+                            const auto material_index = primitives[k].material_index;
+                            // auto& material = materials[material_index];
+                            ImGui::Text("Material %u", material_index);
+                            ImGui::TreePop();
+                        }
+                    }
+                    ImGui::TreePop();
+                }
+            }
+            ImGui::TreePop();
+        }
+    }
+    ImGui::End();
+}
 
 int main(const int argc, char* argv[]) {
     spdlog::set_level(spdlog::level::info);
@@ -167,7 +217,7 @@ int main(const int argc, char* argv[]) {
             static float slow_delta = 0.0f;
 
             ImGui::Text("Frametime: %.2f ms (%.0f FPS)", slow_delta * 1000.0f, 1.0f / slow_delta);
-            ImGui::Text("Accumulated Frames: %u", renderer.get_frame_count());
+            ImGui::Text("Accumulated Frames: %u", std::min(renderer.get_frame_count(), renderer.get_settings().max_frames));
 
             const char* items[] = {"None",
                                    "Texcoord",
@@ -190,10 +240,27 @@ int main(const int argc, char* argv[]) {
                 renderer.get_settings().debug_channel = static_cast<DebugChannel>(current_item_index);
                 renderer.update_settings();
             }
+            int samples = static_cast<int>(renderer.get_settings().samples);
+            if (ImGui::SliderInt("Samples", &samples, 1, 32)) {
+                renderer.get_settings().samples = std::clamp(samples, 1, 32);
+                renderer.update_settings();
+            }
+            int max_depth = static_cast<int>(renderer.get_settings().max_depth);
+            if (ImGui::SliderInt("Max Depth", &max_depth, 0, 32)) {
+                renderer.get_settings().max_depth = std::clamp(max_depth, 0, 32);
+                renderer.update_settings();
+            }
+            int max_frames = static_cast<int>(renderer.get_settings().max_frames);
+            if (ImGui::SliderInt("Max Frames", &max_frames, -1, 128)) {
+                renderer.get_settings().max_frames = max_frames;
+                renderer.update_settings();
+            }
             if (ImGui::Button("Reload Shaders (R)") || Input::key_released(GLFW_KEY_R)) {
                 renderer.reload_shaders();
             }
             ImGui::End();
+
+            //show_scene_graph(scene);
 
             Gui::end();
 

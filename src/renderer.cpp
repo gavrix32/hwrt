@@ -191,7 +191,10 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
     frame_mgr = std::make_unique<FrameManager>(ctx, frames_in_flight, swapchain->get_images().size());
 
     RenderSettings render_settings{
-        .debug_channel = DebugChannel::None
+        .debug_channel = DebugChannel::None,
+        .samples = 1,
+        .max_depth = 2,
+        .max_frames = UINT32_MAX
     };
 
     auto render_settings_buffer = BufferBuilder()
@@ -364,32 +367,34 @@ void Renderer::draw_frame(const Scene& scene) {
         .pDescriptorSets = &*scene.get_descriptor_set()
     };
 
-    cmd.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, res->rt_pipeline.get());
-    cmd.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, res->rt_pipeline.get_layout(), 0, rt_writes);
-    cmd.bindDescriptorSets2(bind_sets_info);
-    cmd.pushConstants2(rt_push_constants_info);
+    if (frame_count <= res->render_settings.max_frames) {
+        cmd.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, res->rt_pipeline.get());
+        cmd.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, res->rt_pipeline.get_layout(), 0, rt_writes);
+        cmd.bindDescriptorSets2(bind_sets_info);
+        cmd.pushConstants2(rt_push_constants_info);
 
-    cmd.traceRaysKHR(res->sbt.get_rgen_region(),
-                     res->sbt.get_rmiss_region(),
-                     res->sbt.get_hit_region(),
-                     {},
-                     swapchain->get_extent().width,
-                     swapchain->get_extent().height,
-                     1);
+        cmd.traceRaysKHR(res->sbt.get_rgen_region(),
+                         res->sbt.get_rmiss_region(),
+                         res->sbt.get_hit_region(),
+                         {},
+                         swapchain->get_extent().width,
+                         swapchain->get_extent().height,
+                         1);
 
-    res->rt_image.transition_layout(cmd,
-                                    vk::ImageLayout::eGeneral,
-                                    vk::PipelineStageFlagBits2::eComputeShader,
-                                    vk::AccessFlagBits2::eShaderStorageRead);
+        res->rt_image.transition_layout(cmd,
+                                        vk::ImageLayout::eGeneral,
+                                        vk::PipelineStageFlagBits2::eComputeShader,
+                                        vk::AccessFlagBits2::eShaderStorageRead);
 
-    cmd.bindPipeline(vk::PipelineBindPoint::eCompute, res->compute_pipeline.get());
-    cmd.pushDescriptorSet(vk::PipelineBindPoint::eCompute, res->compute_pipeline.get_layout(), 0, compute_writes);
-    cmd.pushConstants2(compute_push_constants_info);
+        cmd.bindPipeline(vk::PipelineBindPoint::eCompute, res->compute_pipeline.get());
+        cmd.pushDescriptorSet(vk::PipelineBindPoint::eCompute, res->compute_pipeline.get_layout(), 0, compute_writes);
+        cmd.pushConstants2(compute_push_constants_info);
 
-    uint32_t group_count_x = (swapchain->get_extent().width + 16 - 1) / 16;
-    uint32_t group_count_y = (swapchain->get_extent().height + 16 - 1) / 16;
+        uint32_t group_count_x = (swapchain->get_extent().width + 16 - 1) / 16;
+        uint32_t group_count_y = (swapchain->get_extent().height + 16 - 1) / 16;
 
-    cmd.dispatch(group_count_x, group_count_y, 1);
+        cmd.dispatch(group_count_x, group_count_y, 1);
+    }
 
     res->out_image.transition_layout(cmd,
                                      vk::ImageLayout::eTransferSrcOptimal,
@@ -494,7 +499,7 @@ void Renderer::draw_frame(const Scene& scene) {
 
     frame_mgr->update();
 
-    if (!frame_reset) {
+    if (!frame_reset && frame_count <= res->render_settings.max_frames) {
         frame_count++;
     }
 }
@@ -506,7 +511,8 @@ void Renderer::recreate() {
 
     const auto old_swapchain = std::move(swapchain);
 
-    swapchain = std::make_unique<Swapchain>(ctx.get_adapter(), ctx.get_device(), Window::get(), res->surface, old_swapchain->get());
+    swapchain = std::make_unique<Swapchain>(ctx.get_adapter(), ctx.get_device(), Window::get(), res->surface,
+                                            old_swapchain->get());
 
     Gui::set_image_count(swapchain->get_image_count());
 
