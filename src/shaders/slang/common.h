@@ -15,7 +15,7 @@
 
 #define PI 3.14159
 #define EPSILON 0.001
-#define T_MIN 0.001
+#define T_MIN 0.0
 #define T_MAX 10000.0
 
 struct Payload {
@@ -94,7 +94,7 @@ struct RenderSettings {
     DebugChannel debug_channel;
     uint32_t samples;
     uint32_t max_depth;
-    uint32_t max_frames;
+    uint32_t iterations;
 };
 
 struct PushData {

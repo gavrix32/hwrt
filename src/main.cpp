@@ -125,7 +125,8 @@ int main(const int argc, char* argv[]) {
         //const auto model = asset_manager.get_model("../assets/models/sponza.glb");
 
         auto camera = Camera();
-        camera.set_pos(glm::vec3(0.0f, 0.0f, 1.0f));
+        camera.set_pos(glm::vec3(0.0f, 1.0f, 4.0f));
+        camera.set_fov(40.0f);
 
         Scene scene;
         scene.set_camera(camera);
@@ -217,7 +218,7 @@ int main(const int argc, char* argv[]) {
             static float slow_delta = 0.0f;
 
             ImGui::Text("Frametime: %.2f ms (%.0f FPS)", slow_delta * 1000.0f, 1.0f / slow_delta);
-            ImGui::Text("Accumulated Frames: %u", std::min(renderer.get_frame_count(), renderer.get_settings().max_frames));
+            ImGui::Text("Accumulated Frames: %u", std::min(renderer.get_frame_count(), renderer.get_settings().iterations));
 
             const char* items[] = {"None",
                                    "Texcoord",
@@ -250,9 +251,9 @@ int main(const int argc, char* argv[]) {
                 renderer.get_settings().max_depth = std::clamp(max_depth, 0, 32);
                 renderer.update_settings();
             }
-            int max_frames = static_cast<int>(renderer.get_settings().max_frames);
-            if (ImGui::SliderInt("Max Frames", &max_frames, -1, 128)) {
-                renderer.get_settings().max_frames = max_frames;
+            int iterations = static_cast<int>(renderer.get_settings().iterations);
+            if (ImGui::SliderInt("Iterations", &iterations, -1, 128)) {
+                renderer.get_settings().iterations = iterations;
                 renderer.update_settings();
             }
             if (ImGui::Button("Reload Shaders (R)") || Input::key_released(GLFW_KEY_R)) {

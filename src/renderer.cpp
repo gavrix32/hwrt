@@ -193,8 +193,8 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
     RenderSettings render_settings{
         .debug_channel = DebugChannel::None,
         .samples = 1,
-        .max_depth = 2,
-        .max_frames = UINT32_MAX
+        .max_depth = 4,
+        .iterations = UINT32_MAX
     };
 
     auto render_settings_buffer = BufferBuilder()
@@ -367,7 +367,7 @@ void Renderer::draw_frame(const Scene& scene) {
         .pDescriptorSets = &*scene.get_descriptor_set()
     };
 
-    if (frame_count <= res->render_settings.max_frames) {
+    if (frame_count <= res->render_settings.iterations) {
         cmd.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, res->rt_pipeline.get());
         cmd.pushDescriptorSet(vk::PipelineBindPoint::eRayTracingKHR, res->rt_pipeline.get_layout(), 0, rt_writes);
         cmd.bindDescriptorSets2(bind_sets_info);
@@ -499,7 +499,7 @@ void Renderer::draw_frame(const Scene& scene) {
 
     frame_mgr->update();
 
-    if (!frame_reset && frame_count <= res->render_settings.max_frames) {
+    if (!frame_reset && frame_count <= res->render_settings.iterations) {
         frame_count++;
     }
 }

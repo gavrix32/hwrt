@@ -41,33 +41,6 @@ float3 inferno_quintic(float x, float2 range) {
 	);
 }
 
-// source: https://www.reedbeta.com/blog/hash-functions-for-gpu-rendering/
-uint pcg_hash(uint seed) {
-    uint state = seed * 747796405u + 2891336453u;
-    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
-    return (word >> 22u) ^ word;
-}
-
-float random(inout uint seed) {
-    seed = pcg_hash(seed);
-    return float(seed) * (1.0 / 4294967296.0);
-}
-
-float3 random_cosine_weighted_hemisphere(float3 normal, inout uint seed) {
-    float a = random(seed) * 2.0 * PI;
-    float z = random(seed) * 2.0 - 1.0;
-    float r = sqrt(1.0 - z * z);
-    float x = r * cos(a);
-    float y = r * sin(a);
-    return normalize(normal + float3(x, y, z));
-}
-
-void update_seed(inout uint seed, uint frame) {
-    seed = pcg_hash(uint(DispatchRaysIndex().x));
-    seed = pcg_hash(seed + uint(DispatchRaysIndex().y));
-    seed = pcg_hash(seed + uint(frame * 1000.0));
-}
-
 float3 heatmap(RayDesc ray, float2 range) {
     Payload payload;
     uint64_t start = clockARB();
@@ -79,100 +52,54 @@ float3 heatmap(RayDesc ray, float2 range) {
     return inferno_quintic(diff, range);
 }
 
-//[shader("raygeneration")]
-//void main() {
-//    uint2 launch_id = DispatchRaysIndex().xy; // Current pixel coords (x,y)
-//    uint2 launch_size = DispatchRaysDimensions().xy; // Image size (width, height)
-//
-//    RenderSettings render_settings = push_data.render_settings[0];
-//
-//    float3 previous_radiance = out_image[int2(launch_id)].rgb;
-//    if (push_data.frame_count >= render_settings.max_frames) {
-//        out_image[int2(launch_id)] = float4(previous_radiance, 1.0);
-//        return;
-//    }
-//
-//    float2 uv = (float2(launch_id) + 0.5) / float2(launch_size) * 2.0 - 1.0; // NDC in range [-1, 1]
-//
-//    uint seed = 0;
-//    update_seed(seed, uint(push_data.frame_count));
-//
-//    uv.x += (random(seed) - 0.5) * 0.002;
-//    uv.y += (random(seed) - 0.5) * 0.002;
-//
-//    float4 origin = mul(uniform.inv_view, float4(0.0, 0.0, 0.0, 1.0)); // Camera position
-//    float4 target = mul(uniform.inv_proj, float4(uv, 1.0, 1.0)); // View space target
-//    float4 direction = mul(uniform.inv_view, float4(normalize(target.xyz), 0.0)); // World space direction
-//
-//    //RayDesc ray;
-//    //ray.Origin = origin.xyz;
-//    //ray.Direction = direction.xyz;
-//    //ray.TMin = 0.001;
-//    //ray.TMax = 10000.0;
-//    // TODO: чекать это tmax вместо -1
-//
-//    float3 total_radiance = float3(0.0);
-//
-//    if (render_settings.debug_channel == DebugChannel.None) {
-//        for (int i = 0; i < render_settings.spp; ++i) {
-//            float3 radiance = float3(0.0);
-//            float3 energy = float3(1.0);
-//            RayDesc ray;
-//            ray.Origin = origin.xyz;
-//            ray.Direction = direction.xyz;
-//            ray.TMin = 0.001;
-//            ray.TMax = 10000.0;
-//            for (int j = 0; j <= render_settings.bounces; ++j) {
-//                Payload payload;
-//                payload.depth = -1.0;
-//
-//                TraceRay(tlas, RAY_FLAG_NONE, 0xFF, 0, 0, 0, ray, payload);
-//
-//                //radiance += energy * payload.emission * 40.0;
-//                radiance += energy * payload.emission;
-//
-//                if (any(payload.emission > 0.0) || payload.depth == -1.0) break;
-//
-//                energy *= payload.color;
-//
-//                float3 hitpos = ray.Origin + ray.Direction * payload.depth;
-//
-//                //if (dot(ray.Direction, payload.normal) > 0.0) {
-//                //    payload.normal = -payload.normal;
-//                //}
-//
-//                ray.Origin = hitpos + (payload.normal * EPSILON);
-//                ray.Direction = random_cosine_weighted_hemisphere(payload.normal, seed);
-//            }
-//            total_radiance += radiance;
-//        }
-//        total_radiance /= float(render_settings.spp);
-//    } else if (render_settings.debug_channel == DebugChannel.Heatmap) {
-//        RayDesc ray;
-//        ray.Origin = origin.xyz;
-//        ray.Direction = direction.xyz;
-//        ray.TMin = 0.001;
-//        ray.TMax = 10000.0;
-//        total_radiance = heatmap(ray, float2(10000.0, 100000.0));
-//    } else {
-//        RayDesc ray;
-//        ray.Origin = origin.xyz;
-//        ray.Direction = direction.xyz;
-//        ray.TMin = 0.001;
-//        ray.TMax = 10000.0;
-//        Payload payload;
-//        payload.color = float3(0.0);
-//        TraceRay(tlas, RAY_FLAG_NONE, 0xFF, 0, 0, 0, ray, payload);
-//        total_radiance = payload.color;
-//    }
-//
-//    float3 accumulated_radiance = total_radiance;
-//    if (push_data.frame_count < render_settings.max_frames) {
-//        accumulated_radiance = lerp(previous_radiance, total_radiance, 1.0 / float(push_data.frame_count));
-//    }
-//
-//    out_image[int2(launch_id)] = float4(accumulated_radiance, 1.0);
-//}
+// source: https://www.reedbeta.com/blog/hash-functions-for-gpu-rendering/
+static uint rng_state;
+
+uint rand_pcg() {
+    uint state = rng_state;
+    rng_state = rng_state * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+float random() {
+    uint seed = rand_pcg();
+    return float(seed) / 4294967296.0;
+}
+
+void orthonormal_basis(float3 normal, out float3 tangent, out float3 bitangent) {
+    float3 up = abs(normal.z) < 1.0 - EPSILON ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
+
+    tangent = normalize(cross(up, normal));
+    bitangent = cross(normal, tangent);
+}
+
+float3 random_uniform_hemisphere(float3 normal) {
+    float z = random();
+    float r = sqrt(1.0 - z * z);
+    float phi = 2.0 * PI * random();
+
+    float3 local_dir = float3(r * cos(phi), r * sin(phi), z);
+
+    float3 tangent, bitangent;
+    orthonormal_basis(normal, tangent, bitangent);
+
+    float3 world_dir = local_dir.x * tangent + local_dir.y * bitangent + local_dir.z * normal;
+
+    return normalize(world_dir);
+}
+
+float3 sample_cosine_hemisphere() {
+    float r1 = random();
+    float r2 = random();
+
+    float phi = 2 * PI * r1;
+    float x = cos(phi) * sqrt(r2);
+    float y = sin(phi) * sqrt(r2);
+    float z = sqrt(1 - r2);
+
+    return float3(x, y, z);
+}
 
 float3 get_accumulated_color(float3 color) {
     if (push_data.frame_count == 1) {
@@ -205,29 +132,71 @@ float3 get_debug_color(RayDesc ray) {
     return color;
 }
 
-float3 path_trace(RayDesc ray, int max_depth, inout uint seed) {
+float3 get_sky_color(float3 dir) {
+    dir = normalize(dir);
+
+    float transition = pow(max(0.0, dir.y), 0.5); // Плавность перехода
+
+    float3 horizon_color = float3(0.4, 0.6, 0.8);  // Нежно-голубой у горизонта
+    float3 zenith_color = float3(0.05, 0.15, 0.4); // Глубокий синий в зените
+    float3 ground_color = float3(0.1, 0.1, 0.1);   // Почти черный низ
+
+    if (dir.y > 0) {
+        return lerp(horizon_color, zenith_color, transition);
+    } else {
+        return lerp(horizon_color, ground_color, pow(max(0.0, -dir.y), 0.2));
+    }
+}
+
+float3 path_trace(RayDesc ray, int max_depth) {
     float3 radiance = float3(0.0);
     float3 throughput = float3(1.0);
 
     for (int depth = 0; depth < max_depth; ++depth) {
         Payload payload = {};
-
+        
         TraceRay(tlas, RAY_FLAG_NONE, 0xFF, 0, 0, 0, ray, payload);
 
-        radiance += throughput * payload.emission;
+        if (payload.depth == T_MAX) {
+            // radiance += throughput * float3(0.3, 0.6, 1.0) * 10.0;
+            // radiance += throughput * get_sky_color(ray.Direction) * 10.0;
+            // if (dot(ray.Direction, float3(0.0, 0.2, 1.0)) > 0.999) {
+            //     radiance += throughput * float3(0.7, 0.4, 0.5) * 100.0;
+            // }
 
-        if (any(payload.emission > 0.0) || payload.depth == T_MAX) break;
+            break;
+        }
 
-        throughput *= payload.color;
+        if (any(payload.emission > 0.0)) {
+            radiance += throughput * payload.emission * 40.0;
+            break;
+        }
+
+        float3 next_dir = sample_cosine_hemisphere();
+
+        if (dot(ray.Direction, payload.normal) > 0.0) {
+            payload.normal = -payload.normal;
+        }
+
+        float3 tangent, bitangent;
+        orthonormal_basis(payload.normal, tangent, bitangent);
+        next_dir = next_dir.x * tangent + next_dir.y * bitangent + next_dir.z * payload.normal;
+        next_dir = normalize(next_dir);
+
+        float3 brdf = payload.color / PI;
+        float cos_theta = max(dot(next_dir, payload.normal), 0.0);
+        float pdf = cos_theta / PI;
+
+        if (pdf < EPSILON) {
+            break;
+        }
+
+        throughput *= brdf * cos_theta / pdf;
 
         float3 hitpos = ray.Origin + ray.Direction * payload.depth;
 
-        // if (dot(ray.Direction, payload.normal) > 0.0) {
-        //     payload.normal = -payload.normal;
-        // }
-
         ray.Origin = hitpos + (payload.normal * EPSILON);
-        ray.Direction = random_cosine_weighted_hemisphere(payload.normal, seed);
+        ray.Direction = next_dir;
     }
 
     return radiance;
@@ -235,21 +204,21 @@ float3 path_trace(RayDesc ray, int max_depth, inout uint seed) {
 
 [shader("raygeneration")]
 void main() {
-    uint seed = 0;
-    update_seed(seed, uint(push_data.frame_count));
-
     uint2 launch_id = DispatchRaysIndex().xy; // Current pixel coords (x,y)
     uint2 launch_size = DispatchRaysDimensions().xy; // Image size (width, height)
+
+    uint pixel_index = launch_id.y * launch_size.x + launch_id.x;
+    rng_state = pixel_index + push_data.frame_count * 1_000_000u;
 
     float2 uv = (float2(launch_id) + 0.5) / float2(launch_size) * 2.0 - 1.0; // NDC in range [-1, 1]
 
     // Anti-Aliasing
-    uv.x += (random(seed) - 0.5) * 0.002;
-    uv.y += (random(seed) - 0.5) * 0.002;
+    uv.x += (random() - 0.5) * 0.002;
+    uv.y += (random() - 0.5) * 0.002;
 
     RenderSettings render_settings = push_data.render_settings[0];
 
-    if (push_data.frame_count > render_settings.max_frames) {
+    if (push_data.frame_count > render_settings.iterations) {
         return;
     }
 
@@ -272,7 +241,7 @@ void main() {
     float3 radiance = float3(0.0);
 
     for (int sample = 0; sample < render_settings.samples; ++sample) {
-        radiance += path_trace(ray, render_settings.max_depth, seed);
+        radiance += path_trace(ray, render_settings.max_depth);
     }
     radiance /= render_settings.samples;
 

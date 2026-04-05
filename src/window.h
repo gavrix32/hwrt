@@ -2,7 +2,7 @@
 
 #include <string>
 
-struct GLFWwindow;
+class GLFWwindow;
 
 class Window {
     inline static GLFWwindow* handle;
