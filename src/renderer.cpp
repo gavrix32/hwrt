@@ -194,7 +194,9 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
         .debug_channel = DebugChannel::None,
         .samples = 1,
         .max_depth = 4,
-        .iterations = UINT32_MAX
+        .iterations = UINT32_MAX,
+        .nee = 1,
+        .mis = 0
     };
 
     auto render_settings_buffer = BufferBuilder()
@@ -336,7 +338,8 @@ void Renderer::draw_frame(const Scene& scene) {
     PushData push_data{
         .scene_ptrs = scene.get_scene_ptrs(),
         .render_settings = res->render_settings_buffer.get_device_address(ctx.get_device()),
-        .frame_count = frame_count
+        .frame_count = frame_count,
+        .num_lights = scene.get_num_lights()
     };
 
     vk::PushConstantsInfo rt_push_constants_info{

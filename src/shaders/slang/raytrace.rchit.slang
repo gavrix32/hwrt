@@ -94,18 +94,6 @@ Surface get_surface(ScenePtrs scene, float3 bary) {
         s.shading_normal = s.geometry_normal;
     }
 
-    //if (geometry.material_index >= 14 && geometry.material_index <= 20) {
-    //    s.emissive = s.albedo * 10.0;
-    //}
-
-    //if (geometry.material_index >= 27 && geometry.material_index <= 27) {
-    //    s.emissive = s.albedo * 1.0;
-    //}
-
-    //if (geometry.material_index == 2) {
-    //    s.emissive = s.albedo * 1.0;
-    //}
-
     return s;
 }
 

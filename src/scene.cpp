@@ -139,12 +139,10 @@ void Scene::build_blases(const Context& ctx) {
     auto material_address = material_buffer.get_device_address(ctx.get_device());
     auto geometry_address = geometry_buffer.get_device_address(ctx.get_device());
 
-    scene_ptrs = ScenePtrs{
-        .vertices = vertex_address,
-        .indices = index_address,
-        .materials = material_address,
-        .geometries = geometry_address
-    };
+    scene_ptrs.vertices = vertex_address;
+    scene_ptrs.indices = index_address;
+    scene_ptrs.materials = material_address;
+    scene_ptrs.geometries = geometry_address;
 
     auto as_props = ctx.get_adapter().get().getProperties2<
         vk::PhysicalDeviceProperties2,
@@ -362,6 +360,65 @@ void Scene::build_tlas(const Context& ctx) {
 
     single_time_encoder.get_cmd().pipelineBarrier2(dependency_info);
     single_time_encoder.submit(ctx.get_device());
+}
+
+void Scene::build_light_buffer(const Context& ctx) {
+    spdlog::info("Building light buffer...");
+
+    for (const auto& instance : model_instances) {
+        const auto& model = instance.model;
+        for (const auto& node : model->nodes) {
+            glm::mat4 world_transform = instance.transform * node.transform;
+
+            const auto& mesh = model->meshes[node.mesh_index];
+            for (const auto& primitive : mesh.primitives) {
+                const auto& material = model->materials[primitive.material_index];
+                if (material.emissive_factor.r == 0.0f &&
+                    material.emissive_factor.g == 0.0f &&
+                    material.emissive_factor.b == 0.0f &&
+                    material.emissive_index == UINT32_MAX) {
+                    continue;
+                }
+
+                const uint32_t num_triangles = primitive.indices.size() / 3;
+                for (uint32_t triangle_idx = 0; triangle_idx < num_triangles; ++triangle_idx) {
+                    const uint32_t i0 = primitive.indices[triangle_idx * 3 + 0];
+                    const uint32_t i1 = primitive.indices[triangle_idx * 3 + 1];
+                    const uint32_t i2 = primitive.indices[triangle_idx * 3 + 2];
+
+                    const glm::vec3 v0 = world_transform * glm::vec4(primitive.vertices[i0].position, 1.0f);
+                    const glm::vec3 v1 = world_transform * glm::vec4(primitive.vertices[i1].position, 1.0f);
+                    const glm::vec3 v2 = world_transform * glm::vec4(primitive.vertices[i2].position, 1.0f);
+
+                    const float area = 0.5f * glm::length(glm::cross(v1 - v0, v2 - v0));
+                    if (area < 1e-6f) continue;
+
+                    lights.push_back({
+                        .emission = material.emissive_factor,
+                        .v0 = v0,
+                        .v1 = v1,
+                        .v2 = v2,
+                        .area = area
+                    });
+                }
+            }
+        }
+    }
+
+    if (lights.empty()) {
+        lights.push_back({});
+    }
+
+    light_buffer = BufferBuilder()
+                   .size(sizeof(Light) * lights.size())
+                   .usage(vk::BufferUsageFlagBits::eShaderDeviceAddress)
+                   .allocation_flags(VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                                     VMA_ALLOCATION_CREATE_MAPPED_BIT)
+                   .build(ctx.get_allocator());
+
+    memcpy(light_buffer.mapped_ptr(), lights.data(), lights.size() * sizeof(Light));
+
+    scene_ptrs.lights = light_buffer.get_device_address(ctx.get_device());
 }
 
 void Scene::build_descriptor_set(const Context& ctx) {

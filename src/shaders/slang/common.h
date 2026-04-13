@@ -64,11 +64,20 @@ struct Geometry {
     uint32_t material_index;
 };
 
+struct Light {
+    float3 emission;
+    float3 v0;
+    float3 v1;
+    float3 v2;
+    float area;
+};
+
 struct ScenePtrs {
     P(Vertex) vertices;
     P(uint32_t) indices;
     P(Material) materials;
     P(Geometry) geometries;
+    P(Light) lights;
 };
 
 enum class DebugChannel : uint32_t {
@@ -95,10 +104,13 @@ struct RenderSettings {
     uint32_t samples;
     uint32_t max_depth;
     uint32_t iterations;
+    uint32_t nee;
+    uint32_t mis;
 };
 
 struct PushData {
     ScenePtrs scene_ptrs;
     P(RenderSettings) render_settings;
     uint32_t frame_count;
+    uint32_t num_lights;
 };

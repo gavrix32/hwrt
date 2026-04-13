@@ -213,7 +213,7 @@ void Model::process_material(const fastgltf::Asset& asset, const fastgltf::Mater
         const size_t image_index = asset.textures[texture_index].imageIndex.value();
         material.emissive_index = static_cast<uint32_t>(image_index);
     }
-    material.emissive_factor = glm::make_vec3(gltf_material.emissiveFactor.data());
+    material.emissive_factor = glm::make_vec3(gltf_material.emissiveFactor.data()) * gltf_material.emissiveStrength;
 
     material.alpha_mode = static_cast<AlphaMode>(gltf_material.alphaMode);
     material.alpha_cutoff = gltf_material.alphaCutoff;

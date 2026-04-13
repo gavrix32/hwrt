@@ -148,52 +148,150 @@ float3 get_sky_color(float3 dir) {
     }
 }
 
-float3 path_trace(RayDesc ray, int max_depth) {
+float3 evaluate_brdf(float3 base_color) {
+    return base_color / PI;
+}
+
+Light get_random_light() {
+    uint light_idx = uint(random() * push_data.num_lights);
+    return push_data.scene_ptrs.lights[light_idx];
+}
+
+float3 sample_light(Light light) {
+    float u = random();
+    float v = random();
+    if (u + v > 1.0) { u = 1.0 - u; v = 1.0 - v; }
+    float w = 1.0 - u - v;
+
+    return u * light.v0 + v * light.v1 + w * light.v2;
+}
+
+float3 get_next_dir(float3 normal) {
+    float3 dir = sample_cosine_hemisphere();
+
+    float3 tangent, bitangent;
+    orthonormal_basis(normal, tangent, bitangent);
+    dir = dir.x * tangent + dir.y * bitangent + dir.z * normal;
+    dir = normalize(dir);
+
+    return dir;
+}
+
+float evaluate_pdf(float cos_theta) {
+    return cos_theta / PI;
+}
+
+float evaluate_light_pdf(Light light, float3 to_light) {
+    float distance_squared = dot(to_light, to_light);
+    float distance = sqrt(distance_squared);
+    to_light = normalize(to_light);
+
+    float3 light_normal = normalize(cross(light.v1 - light.v0, light.v2 - light.v0));
+    float cos_theta = max(dot(light_normal, -to_light), 0.00001);
+
+    float pdf = distance_squared / (cos_theta * light.area);
+    pdf /= push_data.num_lights;
+
+    return pdf;
+}
+
+float3 path_trace_brdf(RayDesc ray, int max_depth) {
     float3 radiance = float3(0.0);
     float3 throughput = float3(1.0);
 
     for (int depth = 0; depth < max_depth; ++depth) {
         Payload payload = {};
-        
         TraceRay(tlas, RAY_FLAG_NONE, 0xFF, 0, 0, 0, ray, payload);
 
         if (payload.depth == T_MAX) {
-            // radiance += throughput * float3(0.3, 0.6, 1.0) * 10.0;
-            // radiance += throughput * get_sky_color(ray.Direction) * 10.0;
-            // if (dot(ray.Direction, float3(0.0, 0.2, 1.0)) > 0.999) {
-            //     radiance += throughput * float3(0.7, 0.4, 0.5) * 100.0;
-            // }
-
             break;
         }
 
-        if (any(payload.emission > 0.0)) {
-            radiance += throughput * payload.emission * 40.0;
+        if (any(payload.emission > 0.0) && dot(payload.normal, -ray.Direction) > 0.0) {
+            radiance += throughput * payload.emission;
             break;
         }
 
-        float3 next_dir = sample_cosine_hemisphere();
+        if (dot(payload.normal, ray.Direction) > 0.0) {
+            payload.normal = -payload.normal;
+        }
+
+        float3 next_dir = get_next_dir(payload.normal);
+        float3 brdf = evaluate_brdf(payload.color);
+        float lambert = dot(payload.normal, next_dir);
+        float pdf = evaluate_pdf(lambert);
+
+        throughput *= brdf * lambert / pdf;
+
+        float3 hitpos = ray.Origin + ray.Direction * payload.depth;
+
+        ray.Origin = hitpos + (payload.normal * EPSILON);
+        ray.Direction = next_dir;
+    }
+
+    return radiance;
+}
+
+float3 path_trace_nee(RayDesc ray, int max_depth) {
+    float3 radiance = float3(0.0);
+    float3 throughput = float3(1.0);
+
+    for (int depth = 0; depth < max_depth; ++depth) {
+        Payload payload = {};
+        TraceRay(tlas, RAY_FLAG_NONE, 0xFF, 0, 0, 0, ray, payload);
+
+        if (payload.depth == T_MAX) {
+            break;
+        }
+
+        if (any(payload.emission > 0.0) && dot(payload.normal, -ray.Direction) > 0.0) {
+            if (depth == 0) {
+                radiance += throughput * payload.emission;
+            }
+            break;
+        }
 
         if (dot(ray.Direction, payload.normal) > 0.0) {
             payload.normal = -payload.normal;
         }
 
-        float3 tangent, bitangent;
-        orthonormal_basis(payload.normal, tangent, bitangent);
-        next_dir = next_dir.x * tangent + next_dir.y * bitangent + next_dir.z * payload.normal;
-        next_dir = normalize(next_dir);
+        Light light = get_random_light();
+        float3 light_pos = sample_light(light);
+        float3 hitpos = ray.Origin + ray.Direction * payload.depth;
+        float3 to_light = light_pos - hitpos;
+        float distance_to_light = length(to_light);
+        float3 light_dir = normalize(to_light);
+        float light_lambert = dot(payload.normal, light_dir);
 
-        float3 brdf = payload.color / PI;
-        float cos_theta = max(dot(next_dir, payload.normal), 0.0);
-        float pdf = cos_theta / PI;
+        if (light_lambert > 0.0) {
+            RayDesc shadow_ray = {};
+            shadow_ray.Origin = hitpos + payload.normal * 0.00001;
+            shadow_ray.Direction = light_dir;
+            shadow_ray.TMin = T_MIN;
+            shadow_ray.TMax = distance_to_light - EPSILON;
 
-        if (pdf < EPSILON) {
-            break;
+            Payload shadow_payload = {};
+            TraceRay(tlas, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER,
+                0xFF, 0, 0, 0, shadow_ray, shadow_payload);
+
+            bool is_visible = shadow_payload.depth >= distance_to_light - EPSILON;
+
+            if (is_visible) {
+                float3 brdf = evaluate_brdf(payload.color);
+                float light_pdf = evaluate_light_pdf(light, to_light);
+                if (light_pdf < 0.00001) continue;
+
+                radiance += throughput * brdf * light.emission * light_lambert / light_pdf;
+            }
         }
 
-        throughput *= brdf * cos_theta / pdf;
+        float3 next_dir = get_next_dir(payload.normal);
+        float3 brdf = evaluate_brdf(payload.color);
+        float lambert = dot(next_dir, payload.normal);
+        float pdf = evaluate_pdf(lambert);
+        if (pdf < 0.00001) break;
 
-        float3 hitpos = ray.Origin + ray.Direction * payload.depth;
+        throughput *= brdf * lambert / pdf;
 
         ray.Origin = hitpos + (payload.normal * EPSILON);
         ray.Direction = next_dir;
@@ -241,7 +339,11 @@ void main() {
     float3 radiance = float3(0.0);
 
     for (int sample = 0; sample < render_settings.samples; ++sample) {
-        radiance += path_trace(ray, render_settings.max_depth);
+        if (push_data.render_settings[0].nee == 1) {
+            radiance += path_trace_nee(ray, render_settings.max_depth);
+        } else {
+            radiance += path_trace_brdf(ray, render_settings.max_depth);
+        }
     }
     radiance /= render_settings.samples;
 

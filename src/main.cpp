@@ -163,6 +163,7 @@ int main(const int argc, char* argv[]) {
         // }
         scene.build_blases(ctx);
         scene.build_tlas(ctx);
+        scene.build_light_buffer(ctx);
         scene.build_descriptor_set(ctx);
 
         //spdlog::info("Loaded scene with {} instances", pow(size, 3));
@@ -254,6 +255,16 @@ int main(const int argc, char* argv[]) {
             int iterations = static_cast<int>(renderer.get_settings().iterations);
             if (ImGui::SliderInt("Iterations", &iterations, -1, 128)) {
                 renderer.get_settings().iterations = iterations;
+                renderer.update_settings();
+            }
+            bool nee = renderer.get_settings().nee == 1;
+            if (ImGui::Checkbox("Next Event Estimation", &nee)) {
+                renderer.get_settings().nee = nee ? 1 : 0;
+                renderer.update_settings();
+            }
+            bool mis = renderer.get_settings().mis;
+            if (ImGui::Checkbox("Multiple Importance Sampling", &mis)) {
+                renderer.get_settings().mis = mis;
                 renderer.update_settings();
             }
             if (ImGui::Button("Reload Shaders (R)") || Input::key_released(GLFW_KEY_R)) {

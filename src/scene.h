@@ -30,11 +30,13 @@ class Scene {
     std::vector<uint32_t> indices;
     std::vector<Material> materials;
     std::vector<Geometry> geometries;
+    std::vector<Light> lights;
 
     Buffer vertex_buffer;
     Buffer index_buffer;
     Buffer material_buffer;
     Buffer geometry_buffer;
+    Buffer light_buffer;
 
     std::vector<Image> images;
     std::vector<ImageView> image_views;
@@ -62,6 +64,7 @@ public:
 
     void build_blases(const Context& ctx);
     void build_tlas(const Context& ctx);
+    void build_light_buffer(const Context& ctx);
     void build_descriptor_set(const Context& ctx);
 
     [[nodiscard]] const AccelerationStructure& get_tlas() const {
@@ -78,6 +81,10 @@ public:
 
     [[nodiscard]] const ScenePtrs& get_scene_ptrs() const {
         return scene_ptrs;
+    }
+
+    [[nodiscard]] uint32_t get_num_lights() const {
+        return lights.size();
     }
 
     [[nodiscard]] const vk::raii::DescriptorSet& get_descriptor_set() const {
