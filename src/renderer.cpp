@@ -195,8 +195,7 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
         .samples = 1,
         .max_depth = 4,
         .iterations = UINT32_MAX,
-        .nee = 1,
-        .mis = 0
+        .sampling_strategy = SamplingStrategy::MultipleImportanceSampling
     };
 
     auto render_settings_buffer = BufferBuilder()

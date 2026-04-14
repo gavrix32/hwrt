@@ -23,6 +23,7 @@ struct Payload {
     float3 color;
     float3 emission;
     float depth;
+    float light_area;
 };
 
 struct Vertex {
@@ -99,13 +100,19 @@ enum class DebugChannel : uint32_t {
     Heatmap = 15
 };
 
+enum class SamplingStrategy : uint32_t {
+    UniformSampling = 0,
+    ImportanceSampling = 1,
+    NextEventEstimation = 2,
+    MultipleImportanceSampling = 3
+};
+
 struct RenderSettings {
     DebugChannel debug_channel;
     uint32_t samples;
     uint32_t max_depth;
     uint32_t iterations;
-    uint32_t nee;
-    uint32_t mis;
+    SamplingStrategy sampling_strategy;
 };
 
 struct PushData {

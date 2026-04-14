@@ -19,6 +19,7 @@ struct Surface {
     float metallic;
     float roughness;
     float3 emissive;
+    float light_area;
 };
 
 Surface get_surface(ScenePtrs scene, float3 bary) {
@@ -94,6 +95,14 @@ Surface get_surface(ScenePtrs scene, float3 bary) {
         s.shading_normal = s.geometry_normal;
     }
 
+    if (any(s.emissive > 0.0)) {
+        float3 w0 = mul(ObjectToWorld3x4(), float4(v0.position, 1.0)).xyz;
+        float3 w1 = mul(ObjectToWorld3x4(), float4(v1.position, 1.0)).xyz;
+        float3 w2 = mul(ObjectToWorld3x4(), float4(v2.position, 1.0)).xyz;
+
+        s.light_area = 0.5 * length(cross(w1 - w0, w2 - w0));
+    }
+
     return s;
 }
 
@@ -130,4 +139,5 @@ void main(inout Payload payload, in BuiltInTriangleIntersectionAttributes attr) 
     payload.normal = s.shading_normal;
     payload.emission = s.emissive;
     payload.depth = RayTCurrent();
+    payload.light_area = s.light_area;
 }

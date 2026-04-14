@@ -221,25 +221,27 @@ int main(const int argc, char* argv[]) {
             ImGui::Text("Frametime: %.2f ms (%.0f FPS)", slow_delta * 1000.0f, 1.0f / slow_delta);
             ImGui::Text("Accumulated Frames: %u", std::min(renderer.get_frame_count(), renderer.get_settings().iterations));
 
-            const char* items[] = {"None",
-                                   "Texcoord",
-                                   "Depth",
-                                   "Hitpos",
-                                   "Normal Texture",
-                                   "Geometry Normal",
-                                   "Geometry Tangent",
-                                   "Geometry Bitangent",
-                                   "Geometry Tangent W",
-                                   "Shading Normal",
-                                   "Alpha",
-                                   "Emissive",
-                                   "Base Color",
-                                   "Metallic",
-                                   "Roughness",
-                                   "Heatmap"};
-            static int current_item_index = 0;
-            if (ImGui::Combo("Debug Channel", &current_item_index, items, IM_ARRAYSIZE(items))) {
-                renderer.get_settings().debug_channel = static_cast<DebugChannel>(current_item_index);
+            const char* debug_channel_items[] = {
+                "None",
+                "Texcoord",
+                "Depth",
+                "Hitpos",
+                "Normal Texture",
+                "Geometry Normal",
+                "Geometry Tangent",
+                "Geometry Bitangent",
+                "Geometry Tangent W",
+                "Shading Normal",
+                "Alpha",
+                "Emissive",
+                "Base Color",
+                "Metallic",
+                "Roughness",
+                "Heatmap"
+            };
+            static int debug_item_idx = static_cast<int>(renderer.get_settings().debug_channel);
+            if (ImGui::Combo("Debug Channel", &debug_item_idx, debug_channel_items, IM_ARRAYSIZE(debug_channel_items))) {
+                renderer.get_settings().debug_channel = static_cast<DebugChannel>(debug_item_idx);
                 renderer.update_settings();
             }
             int samples = static_cast<int>(renderer.get_settings().samples);
@@ -257,14 +259,16 @@ int main(const int argc, char* argv[]) {
                 renderer.get_settings().iterations = iterations;
                 renderer.update_settings();
             }
-            bool nee = renderer.get_settings().nee == 1;
-            if (ImGui::Checkbox("Next Event Estimation", &nee)) {
-                renderer.get_settings().nee = nee ? 1 : 0;
-                renderer.update_settings();
-            }
-            bool mis = renderer.get_settings().mis;
-            if (ImGui::Checkbox("Multiple Importance Sampling", &mis)) {
-                renderer.get_settings().mis = mis;
+            const char* sampling_strategy_items[] = {
+                "Uniform Sampling",
+                "Importance Sampling",
+                "Next Event Estimation",
+                "Multiple Importance Sampling"
+            };
+            static int sampling_strategy_idx = static_cast<int>(renderer.get_settings().sampling_strategy);
+            if (ImGui::Combo("Sampling Strategy", &sampling_strategy_idx, sampling_strategy_items,
+                             IM_ARRAYSIZE(sampling_strategy_items))) {
+                renderer.get_settings().sampling_strategy = static_cast<SamplingStrategy>(sampling_strategy_idx);
                 renderer.update_settings();
             }
             if (ImGui::Button("Reload Shaders (R)") || Input::key_released(GLFW_KEY_R)) {
