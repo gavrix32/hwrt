@@ -19,6 +19,14 @@ glm::mat4 Camera::get_proj() const {
     return proj;
 }
 
+glm::vec2 Camera::get_rot() const {
+    return {pitch, yaw};
+}
+
+float Camera::get_fov() const {
+    return fov;
+}
+
 void Camera::set_pos(const glm::vec3 new_pos) {
     pos = new_pos;
 }
@@ -34,10 +42,6 @@ void Camera::set_rot(const glm::vec2 new_rot) {
 
 void Camera::set_fov(const float new_fov) {
     fov = new_fov;
-}
-
-glm::vec2 Camera::get_rot() const {
-    return {pitch, yaw};
 }
 
 void Camera::move(const float x, const float y, const float z) {

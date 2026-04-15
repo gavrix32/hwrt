@@ -271,6 +271,11 @@ int main(const int argc, char* argv[]) {
                 renderer.get_settings().sampling_strategy = static_cast<SamplingStrategy>(sampling_strategy_idx);
                 renderer.update_settings();
             }
+            int fov = static_cast<int>(camera.get_fov());
+            if (ImGui::SliderInt("Field Of View", &fov, 30, 110)) {
+                camera.set_fov(static_cast<float>(fov));
+                renderer.update_settings();
+            }
             if (ImGui::Button("Reload Shaders (R)") || Input::key_released(GLFW_KEY_R)) {
                 renderer.reload_shaders();
             }
