@@ -100,7 +100,7 @@ void Gui::init(const Context& ctx, const Swapchain& swapchain) {
     ImGui::CreateContext();
 
     ImGuiIO& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    // io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 
@@ -193,4 +193,8 @@ void Gui::terminate() {
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
     descriptor_pool = nullptr;
+}
+
+bool Gui::is_cursor_captured() {
+    return ImGui::GetIO().WantCaptureMouse;
 }

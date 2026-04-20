@@ -44,7 +44,15 @@ Surface get_surface(ScenePtrs scene, float3 bary) {
     geometry_tangent = normalize(geometry_tangent);
 
     // Gram-Schmidt re-orthogonalize
-    s.geometry_tangent = normalize(geometry_tangent - dot(geometry_tangent, s.geometry_normal) * s.geometry_normal);
+    float3 orthogonalized_tangent = normalize(geometry_tangent - dot(geometry_tangent, s.geometry_normal) * s.geometry_normal);
+    float tangent_len = length(orthogonalized_tangent);
+
+    if (tangent_len > 0.00001) {
+        s.geometry_tangent = orthogonalized_tangent / tangent_len;
+    } else {
+        float3 up = abs(s.geometry_normal.z) < 0.999 ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
+        s.geometry_tangent = normalize(cross(up, s.geometry_normal));
+    }
 
     s.tangent_w = v0.tangent.w;
     s.geometry_bitangent = cross(s.geometry_normal, s.geometry_tangent) * s.tangent_w;

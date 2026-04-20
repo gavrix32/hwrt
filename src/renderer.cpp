@@ -195,7 +195,14 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
         .samples = 1,
         .max_depth = 4,
         .iterations = UINT32_MAX,
-        .sampling_strategy = SamplingStrategy::MultipleImportanceSampling
+        .sampling_strategy = SamplingStrategy::MultipleImportanceSampling,
+        .environment_type = EnvironmentType::Procedural,
+        .sky_color = glm::vec3(0.3f, 0.6f, 1.0f),
+        .sky_emission = 1.0f,
+        .sun = Sun::Enabled,
+        .sun_color = glm::vec3(1.0f),
+        .sun_emission = 50'000.0f,
+        .sun_radius = 0.01
     };
 
     auto render_settings_buffer = BufferBuilder()
@@ -338,7 +345,8 @@ void Renderer::draw_frame(const Scene& scene) {
         .scene_ptrs = scene.get_scene_ptrs(),
         .render_settings = res->render_settings_buffer.get_device_address(ctx.get_device()),
         .frame_count = frame_count,
-        .num_lights = scene.get_num_lights()
+        .num_lights = scene.get_num_lights(),
+        .sun_dir = sun_dir
     };
 
     vk::PushConstantsInfo rt_push_constants_info{
@@ -564,6 +572,10 @@ void Renderer::recreate() {
     res->out_image_view =
         ImageView(ctx.get_device(), res->out_image, vk::ImageViewType::e2D, vk::ImageAspectFlagBits::eColor, 0, 1);
 
+    frame_count = 1;
+}
+
+void Renderer::reset_frames() {
     frame_count = 1;
 }
 

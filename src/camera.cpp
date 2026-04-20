@@ -23,6 +23,10 @@ glm::vec2 Camera::get_rot() const {
     return {pitch, yaw};
 }
 
+glm::quat Camera::get_quat() const {
+    return quat;
+}
+
 float Camera::get_fov() const {
     return fov;
 }

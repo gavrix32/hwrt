@@ -51,7 +51,6 @@ add_executable(hwrt
         src/gui.cpp
         src/tangent.cpp
         src/vulkan/sbt.cpp
-        src/vulkan/sbt.h
 )
 
 # --- STB Setup ---

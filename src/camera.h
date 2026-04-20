@@ -18,6 +18,7 @@ public:
     [[nodiscard]] glm::mat4 get_view() const;
     [[nodiscard]] glm::mat4 get_proj() const;
     [[nodiscard]] glm::vec2 get_rot() const;
+    [[nodiscard]] glm::quat get_quat() const;
     [[nodiscard]] float get_fov() const;
 
     void set_pos(glm::vec3 new_pos);

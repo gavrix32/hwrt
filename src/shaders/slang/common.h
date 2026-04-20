@@ -107,12 +107,31 @@ enum class SamplingStrategy : uint32_t {
     MultipleImportanceSampling = 3
 };
 
+enum class EnvironmentType : uint32_t {
+    None = 0,
+    Solid = 1,
+    Hdri = 2,
+    Procedural = 3
+};
+
+enum class Sun : uint32_t {
+    None = 0,
+    Enabled = 1
+};
+
 struct RenderSettings {
     DebugChannel debug_channel;
     uint32_t samples;
     uint32_t max_depth;
     uint32_t iterations;
     SamplingStrategy sampling_strategy;
+    EnvironmentType environment_type;
+    float3 sky_color;
+    float sky_emission;
+    Sun sun;
+    float3 sun_color;
+    float sun_emission;
+    float sun_radius;
 };
 
 struct PushData {
@@ -120,4 +139,5 @@ struct PushData {
     P(RenderSettings) render_settings;
     uint32_t frame_count;
     uint32_t num_lights;
+    float3 sun_dir;
 };

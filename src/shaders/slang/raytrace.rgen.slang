@@ -1,4 +1,5 @@
 #include "common.h"
+#include "atmosphere.slang"
 
 [[vk::push_constant]]
 PushData push_data;
@@ -121,30 +122,30 @@ float3 sample_cosine_hemisphere() {
     return float3(x, y, z);
 }
 
-float3 local_to_world(float3 local, float3 normal) {
-    float3 up = abs(normal.z) < 1.0 - EPSILON ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
-    float3 tangent = normalize(cross(up, normal));
-    float3 bitangent = cross(normal, tangent);
+float2 sample_disk(float radius) {
+    float r1 = random();
+    float r2 = random();
 
-    float3 world = local.x * tangent + local.y * bitangent + local.z * normal;
-    return normalize(world);
+    float phi = 2 * PI * r1;
+    float dist = radius * sqrt(r2);
+    float x = cos(phi) * dist;
+    float y = sin(phi) * dist;
+
+    return float2(x, y);
 }
 
-// float3 get_sky_color(float3 dir) {
-//     dir = normalize(dir);
+float evaluate_disk_pdf(float radius) {
+    return 1.0 / (PI * radius * radius);
+}
 
-//     float transition = pow(max(0.0, dir.y), 0.5); // Плавность перехода
+float3 local_to_world(float3 local, float3 target) {
+    float3 up = abs(target.z) < 1.0 - EPSILON ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
+    float3 tangent = normalize(cross(up, target));
+    float3 bitangent = cross(target, tangent);
 
-//     float3 horizon_color = float3(0.4, 0.6, 0.8);  // Нежно-голубой у горизонта
-//     float3 zenith_color = float3(0.05, 0.15, 0.4); // Глубокий синий в зените
-//     float3 ground_color = float3(0.1, 0.1, 0.1);   // Почти черный низ
-
-//     if (dir.y > 0) {
-//         return lerp(horizon_color, zenith_color, transition);
-//     } else {
-//         return lerp(horizon_color, ground_color, pow(max(0.0, -dir.y), 0.2));
-//     }
-// }
+    float3 world = local.x * tangent + local.y * bitangent + local.z * target;
+    return normalize(world);
+}
 
 float3 evaluate_brdf(float3 base_color) {
     return base_color / PI;
@@ -192,15 +193,61 @@ float power_heuristic(float pdf_a, float pdf_b) {
     return a / (a + b);
 }
 
+float3 sky_atmosphere(float3 ray_dir, float3 sun_dir) {
+    RenderSettings render_settings = push_data.render_settings[0];
+    float3 transmittance;
+    float3 scatter;
+    switch (render_settings.environment_type) {
+        case EnvironmentType.None: scatter = 0.0.xxx; break;
+        case EnvironmentType.Solid:
+            scatter = render_settings.sky_color * render_settings.sky_emission;
+            break;
+        case EnvironmentType.Hdri: scatter = 0.0.xxx; break;
+        case EnvironmentType.Procedural:
+            scatter = IntegrateScattering(0.0.xxx, ray_dir, T_MAX, sun_dir, 1.0.xxx, transmittance);
+            break;
+    }
+    return scatter;
+}
+
+float3 sun_transmittance(float3 sun_dir) {
+    RenderSettings render_settings = push_data.render_settings[0];
+    float3 transmittance;
+    if (render_settings.environment_type != EnvironmentType.Procedural) {
+        return render_settings.sun_color;
+    }
+    return Absorb(IntegrateOpticalDepth(0.0.xxx, sun_dir));
+}
+
 float3 path_trace_uniform(RayDesc ray, int max_depth) {
+    RenderSettings render_settings = push_data.render_settings[0];
+
     float3 radiance = float3(0.0);
     float3 throughput = float3(1.0);
+
+    float sun_radius = render_settings.sun_radius;
 
     for (int depth = 0; depth < max_depth; ++depth) {
         Payload payload = {};
         TraceRay(tlas, RAY_FLAG_NONE, 0xFF, 0, 0, 0, ray, payload);
 
         if (payload.depth == T_MAX) {
+            radiance += throughput * sky_atmosphere(ray.Direction, push_data.sun_dir);
+
+            float cos_theta = dot(ray.Direction, push_data.sun_dir);
+            float cos_max = cos(sun_radius);
+            bool sun_is_visible = cos_theta >= cos_max;
+
+            if (render_settings.sun == Sun.Enabled && sun_is_visible) {
+                float3 transmittance = sun_transmittance(push_data.sun_dir);
+                float3 sun_contrib = transmittance * 50.0;
+                if (depth == 0) {
+                    radiance += throughput * sun_contrib;
+                } else {
+                    float pdf = evaluate_disk_pdf(sun_radius);
+                    radiance += throughput * sun_contrib / pdf;
+                }
+            }
             break;
         }
 
@@ -229,14 +276,34 @@ float3 path_trace_uniform(RayDesc ray, int max_depth) {
 }
 
 float3 path_trace_importance(RayDesc ray, int max_depth) {
+    RenderSettings render_settings = push_data.render_settings[0];
+
     float3 radiance = float3(0.0);
     float3 throughput = float3(1.0);
+
+    float sun_radius = render_settings.sun_radius;
 
     for (int depth = 0; depth < max_depth; ++depth) {
         Payload payload = {};
         TraceRay(tlas, RAY_FLAG_NONE, 0xFF, 0, 0, 0, ray, payload);
 
         if (payload.depth == T_MAX) {
+            radiance += throughput * sky_atmosphere(ray.Direction, push_data.sun_dir);
+
+            float cos_theta = dot(ray.Direction, push_data.sun_dir);
+            float cos_max = cos(sun_radius);
+            bool sun_is_visible = cos_theta >= cos_max;
+
+            if (render_settings.sun == Sun.Enabled && sun_is_visible) {
+                float3 transmittance = sun_transmittance(push_data.sun_dir);
+                float3 sun_contrib = transmittance * 50.0;
+                if (depth == 0) {
+                    radiance += throughput * sun_contrib;
+                } else {
+                    float pdf = evaluate_disk_pdf(sun_radius);
+                    radiance += throughput * sun_contrib / pdf;
+                }
+            }
             break;
         }
 
@@ -264,15 +331,38 @@ float3 path_trace_importance(RayDesc ray, int max_depth) {
     return radiance;
 }
 
+// TODO: auto exposure
+
 float3 path_trace_nee(RayDesc ray, int max_depth) {
+    RenderSettings render_settings = push_data.render_settings[0];
+
     float3 radiance = float3(0.0);
     float3 throughput = float3(1.0);
+
+    float sun_radius = render_settings.sun_radius;
+    float sun_emission = render_settings.sun_emission;
 
     for (int depth = 0; depth < max_depth; ++depth) {
         Payload payload = {};
         TraceRay(tlas, RAY_FLAG_NONE, 0xFF, 0, 0, 0, ray, payload);
 
         if (payload.depth == T_MAX) {
+            radiance += throughput * sky_atmosphere(ray.Direction, push_data.sun_dir);
+
+            float cos_theta = dot(ray.Direction, push_data.sun_dir);
+            float cos_max = cos(sun_radius);
+            bool sun_is_visible = cos_theta >= cos_max;
+
+            if (render_settings.sun == Sun.Enabled && sun_is_visible) {
+                float3 transmittance = sun_transmittance(push_data.sun_dir);
+                float3 sun_contrib = transmittance * 50.0;
+                if (depth == 0) {
+                    radiance += throughput * sun_contrib;
+                } else {
+                    float pdf = evaluate_disk_pdf(sun_radius);
+                    radiance += throughput * sun_contrib / pdf;
+                }
+            }
             break;
         }
 
@@ -296,7 +386,7 @@ float3 path_trace_nee(RayDesc ray, int max_depth) {
         float3 light_dir = normalize(to_light);
         float light_lambert = dot(payload.normal, light_dir);
 
-        if (light_lambert > 0.0) {
+        if (any(light.emission > 0.0) && light_lambert > 0.0) {
             RayDesc shadow_ray = {};
             shadow_ray.Origin = hitpos + payload.normal * 0.00001;
             shadow_ray.Direction = light_dir;
@@ -313,47 +403,39 @@ float3 path_trace_nee(RayDesc ray, int max_depth) {
                 float3 brdf = evaluate_brdf(payload.color);
                 float pdf = evaluate_light_pdf(light, to_light);
                 if (pdf < 0.00001) continue;
-
-                radiance += throughput * brdf * light.emission * light_lambert / pdf;
+                float3 light_radiance = light.emission * light_lambert / pdf;
+                radiance += throughput * brdf * light_radiance;
             }
         }
 
-        /// Sun
+        if (render_settings.sun == Sun.Enabled &&
+            render_settings.environment_type != EnvironmentType.None &&
+            render_settings.environment_type != EnvironmentType.Hdri) {
+            float3 offset_dir = float3(sample_disk(sun_radius), 1.0);
+            float3 sampled_dir = local_to_world(offset_dir, push_data.sun_dir);
+            float sun_lambert = dot(payload.normal, sampled_dir);
+            
+            if (sun_lambert > 0.0) {
+                RayDesc shadow_ray = {};
+                shadow_ray.Origin = hitpos + payload.normal * 0.00001;
+                shadow_ray.Direction = sampled_dir;
+                shadow_ray.TMin = T_MIN;
+                shadow_ray.TMax = T_MAX;
 
-        // float3 sun_dir = normalize(float3(-1.4, 5.0, -4.9));
-        // float3 sun_emission = float3(10.0, 10.0, 7.0);
-        // float r_max = 0.05;
+                Payload shadow_payload = {};
+                TraceRay(tlas, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER,
+                    0xFF, 0, 0, 0, shadow_ray, shadow_payload);
 
-        // float sun_lambert = dot(payload.normal, sun_dir);
-        // if (sun_lambert > 0.0) {
-        //     float2 rand_sample = float2(random(), random());
-        //     float phi = 2.0 * PI * rand_sample.y;
-        //     float r = r_max * sqrt(rand_sample.x);
-        //     float2 cp = float2(cos(phi), sin(phi)) * r;
-
-        //     float3 swup = abs(sun_dir.z) < 0.999 ? float3(0,0,1) : float3(1,0,0);
-        //     float3 right = normalize(cross(swup, sun_dir));
-        //     float3 up = cross(sun_dir, right);
-
-        //     float3 sampled_dir = normalize(sun_dir + right * cp.x + up * cp.y);
-
-        //     RayDesc shadow_ray = {};
-        //     shadow_ray.Origin = hitpos + payload.normal * 0.00001;
-        //     shadow_ray.Direction = sampled_dir;
-        //     shadow_ray.TMin = T_MIN;
-        //     shadow_ray.TMax = T_MAX;
-
-        //     Payload shadow_payload = {};
-        //     TraceRay(tlas, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER,
-        //         0xFF, 0, 0, 0, shadow_ray, shadow_payload);
-
-        //     if (shadow_payload.depth == T_MAX) {
-        //         float3 brdf = evaluate_brdf(payload.color);
-        //         radiance += throughput * brdf * sun_emission * sun_lambert;
-        //     }
-        // }
-
-        ///
+                if (shadow_payload.depth == T_MAX) {
+                    float3 brdf = evaluate_brdf(payload.color);
+                    float3 transmittance = sun_transmittance(push_data.sun_dir);
+                    float pdf = evaluate_disk_pdf(sun_radius);
+                    if (pdf < 0.00001) continue;
+                    float3 sun_radiance = transmittance * sun_emission * sun_lambert / pdf;
+                    radiance += throughput * brdf * sun_radiance;
+                }
+            }
+        }
 
         float3 next_dir = local_to_world(sample_cosine_hemisphere(), payload.normal);
         float3 brdf = evaluate_brdf(payload.color);
@@ -371,8 +453,12 @@ float3 path_trace_nee(RayDesc ray, int max_depth) {
 }
 
 float3 path_trace_mis(RayDesc ray, int max_depth) {
+    RenderSettings render_settings = push_data.render_settings[0];
+
     float3 radiance = float3(0.0);
     float3 throughput = float3(1.0);
+    float sun_radius = render_settings.sun_radius;
+    float sun_emission = render_settings.sun_emission;
     float last_pdf = 1.0;
 
     for (int depth = 0; depth < max_depth; ++depth) {
@@ -380,6 +466,23 @@ float3 path_trace_mis(RayDesc ray, int max_depth) {
         TraceRay(tlas, RAY_FLAG_NONE, 0xFF, 0, 0, 0, ray, payload);
 
         if (payload.depth == T_MAX) {
+            radiance += throughput * sky_atmosphere(ray.Direction, push_data.sun_dir);
+
+            float cos_theta = dot(ray.Direction, push_data.sun_dir);
+            float cos_max = cos(sun_radius);
+            bool sun_is_visible = cos_theta >= cos_max;
+
+            if (render_settings.sun == Sun.Enabled && sun_is_visible) {
+                float3 transmittance = sun_transmittance(push_data.sun_dir);
+                float3 sun_contrib = transmittance * 50.0;
+                if (depth == 0) {
+                    radiance += throughput * sun_contrib;
+                } else {
+                    float sun_pdf = evaluate_disk_pdf(sun_radius);
+                    float mis_weight = power_heuristic(last_pdf, sun_pdf);
+                    radiance += throughput * sun_contrib * mis_weight;
+                }
+            }
             break;
         }
 
@@ -415,7 +518,7 @@ float3 path_trace_mis(RayDesc ray, int max_depth) {
         float3 light_dir = normalize(to_light);
         float light_lambert = dot(payload.normal, light_dir);
 
-        if (light_lambert > 0.0) {
+        if (any(light.emission > 0.0) && light_lambert > 0.0) {
             RayDesc shadow_ray = {};
             shadow_ray.Origin = hitpos + payload.normal * 0.00001;
             shadow_ray.Direction = light_dir;
@@ -433,8 +536,38 @@ float3 path_trace_mis(RayDesc ray, int max_depth) {
                 float light_pdf = evaluate_light_pdf(light, to_light);
                 float cosine_pdf = evaluate_cosine_pdf(light_lambert);
                 float mis_weight = power_heuristic(light_pdf, cosine_pdf);
-
                 radiance += throughput * brdf * light.emission * light_lambert * mis_weight / light_pdf;
+            }
+        }
+
+        if (render_settings.sun == Sun.Enabled &&
+            render_settings.environment_type != EnvironmentType.None &&
+            render_settings.environment_type != EnvironmentType.Hdri) {
+            float3 offset_dir = float3(sample_disk(sun_radius), 1.0);
+            float3 sampled_dir = local_to_world(offset_dir, push_data.sun_dir);
+            float sun_lambert = dot(payload.normal, sampled_dir);
+            
+            if (sun_lambert > 0.0) {
+                RayDesc shadow_ray = {};
+                shadow_ray.Origin = hitpos + payload.normal * 0.00001;
+                shadow_ray.Direction = sampled_dir;
+                shadow_ray.TMin = T_MIN;
+                shadow_ray.TMax = T_MAX;
+
+                Payload shadow_payload = {};
+                TraceRay(tlas, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER,
+                    0xFF, 0, 0, 0, shadow_ray, shadow_payload);
+
+                if (shadow_payload.depth == T_MAX) {
+                    float3 brdf = evaluate_brdf(payload.color);
+                    float3 transmittance = sun_transmittance(push_data.sun_dir);
+                    float sun_pdf = evaluate_disk_pdf(sun_radius);
+                    float cosine_pdf = evaluate_cosine_pdf(light_lambert);
+                    float mis_weight = power_heuristic(sun_pdf, cosine_pdf);
+
+                    float3 sun_radiance = transmittance * sun_emission * sun_lambert * mis_weight / sun_pdf;
+                    radiance += throughput * brdf * sun_radiance;
+                }
             }
         }
 

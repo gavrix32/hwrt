@@ -41,10 +41,13 @@ class Renderer {
     uint32_t frame_count = 1;
 
 public:
+    glm::vec3 sun_dir = glm::normalize(glm::vec3(0.3f, 0.8f, 0.5f));
+
     explicit Renderer(Context& ctx_);
 
     void draw_frame(const Scene& scene);
     void recreate();
+    void reset_frames();
     void update_settings();
     void reload_shaders();
 
