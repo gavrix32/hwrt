@@ -148,4 +148,6 @@ void main(inout Payload payload, in BuiltInTriangleIntersectionAttributes attr) 
     payload.emission = s.emissive;
     payload.depth = RayTCurrent();
     payload.light_area = s.light_area;
+    payload.metallic = s.metallic;
+    payload.roughness = s.roughness;
 }

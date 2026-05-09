@@ -14,7 +14,7 @@
 #endif
 
 #define PI 3.14159
-#define EPSILON 0.001
+#define EPSILON 0.00001
 #define T_MIN 0.0
 #define T_MAX 10000.0
 
@@ -24,6 +24,8 @@ struct Payload {
     float3 emission;
     float depth;
     float light_area;
+    float metallic;
+    float roughness;
 };
 
 struct Vertex {
