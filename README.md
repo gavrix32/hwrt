@@ -1,7 +1,10 @@
 # ⚡ Hardware Accelerated Ray Tracer (HWRT)
 > A high performance, physically based, progressive **Path Tracer** built from scratch using **C++20** and **Vulkan**.
 
----
+[![Platform](https://img.shields.io/badge/Platform-Windows-blue.svg)](https://www.microsoft.com/windows)
+[![Platform](https://img.shields.io/badge/Platform-Linux-black.svg)](https://www.linux.org/)
+[![Vulkan](https://img.shields.io/badge/Vulkan-1.4-red.svg)](https://www.vulkan.org/)
+[![C++](https://img.shields.io/badge/C++-20-blue.svg)](https://isocpp.org/)
 
 ## 🖼️ Showcase
 <p align="center">
@@ -21,8 +24,6 @@
   <em>Cornell Box</em>
 </p>
 
----
-
 ## ✨ Features
 * Vulkan Ray Tracing Pipeline
 * Unidirectional Path Tracing
@@ -34,15 +35,11 @@
 * Anti-Aliasing
 * Procedural Atmosphere
 
----
-
 ## 🖥️ Requirements
 * OS: Windows/Linux (x64)
 * GPU: NVIDIA RTX or AMD RX 6000+
 * Vulkan SDK: 1.4
 * CMake: 4.0
-
----
 
 ## ⚙️ Build
 ```bash
