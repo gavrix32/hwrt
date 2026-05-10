@@ -80,26 +80,36 @@ void show_solid_sky_settings(Renderer& renderer) {
     if (ImGui::ColorEdit3("Sky Color", &sky_color[0])) {
         renderer.get_settings().sky_color = sky_color * sky_emission;
         renderer.update_settings();
+        renderer.reset_frames();
     }
     if (ImGui::DragFloat("Sky Emission", &sky_emission, 0.01f, 0.0f, 1000.0f)) {
         renderer.get_settings().sky_color = sky_color * sky_emission;
         renderer.update_settings();
+        renderer.reset_frames();
     }
 }
 
 void show_sun_settings(Renderer& renderer) {
     static glm::vec3 sun_color = renderer.get_settings().sun_color;
     static float sun_emission = renderer.get_settings().sun_emission;
+    static float sun_radius = renderer.get_settings().sun_radius;
     if (renderer.get_settings().environment_type != EnvironmentType::Procedural &&
         renderer.get_settings().environment_type != EnvironmentType::Hdri) {
         if (ImGui::ColorEdit3("Sun Color", &sun_color[0])) {
             renderer.get_settings().sun_color = sun_color;
             renderer.update_settings();
+            renderer.reset_frames();
         }
     }
     if (ImGui::DragFloat("Sun Emission", &sun_emission, 1.0f, 0.0f, 100'000.0f)) {
         renderer.get_settings().sun_emission = sun_emission;
         renderer.update_settings();
+        renderer.reset_frames();
+    }
+    if (ImGui::DragFloat("Sun Radius", &sun_radius, 0.001f, 0.0f, 1.0f)) {
+        renderer.get_settings().sun_radius = sun_radius;
+        renderer.update_settings();
+        renderer.reset_frames();
     }
 }
 
@@ -346,20 +356,29 @@ int main(const int argc, char* argv[]) {
                 if (ImGui::Combo("Debug Channel", &debug_item_idx, debug_channel_items, IM_ARRAYSIZE(debug_channel_items))) {
                     renderer.get_settings().debug_channel = static_cast<DebugChannel>(debug_item_idx);
                     renderer.update_settings();
+                    renderer.reset_frames();
                 }
                 int samples = static_cast<int>(renderer.get_settings().samples);
                 if (ImGui::SliderInt("Samples", &samples, 1, 32)) {
                     renderer.get_settings().samples = std::clamp(samples, 1, 32);
                     renderer.update_settings();
+                    renderer.reset_frames();
                 }
                 int max_depth = static_cast<int>(renderer.get_settings().max_depth);
                 if (ImGui::SliderInt("Max Depth", &max_depth, 0, 32)) {
                     renderer.get_settings().max_depth = std::clamp(max_depth, 0, 32);
                     renderer.update_settings();
+                    renderer.reset_frames();
                 }
                 int iterations = static_cast<int>(renderer.get_settings().iterations);
                 if (ImGui::SliderInt("Iterations", &iterations, -1, 128)) {
                     renderer.get_settings().iterations = iterations;
+                    renderer.update_settings();
+                    renderer.reset_frames();
+                }
+                float exposure = renderer.get_settings().exposure;
+                if (ImGui::SliderFloat("Exposure", &exposure, 0.0f, 50.0f)) {
+                    renderer.get_settings().exposure = exposure;
                     renderer.update_settings();
                 }
                 const char* sampling_strategy_items[] = {
@@ -373,6 +392,7 @@ int main(const int argc, char* argv[]) {
                                  IM_ARRAYSIZE(sampling_strategy_items))) {
                     renderer.get_settings().sampling_strategy = static_cast<SamplingStrategy>(sampling_strategy_idx);
                     renderer.update_settings();
+                    renderer.reset_frames();
                 }
                 const char* environment_type_items[] = {
                     "None",
@@ -385,6 +405,7 @@ int main(const int argc, char* argv[]) {
                                  IM_ARRAYSIZE(environment_type_items))) {
                     renderer.get_settings().environment_type = static_cast<EnvironmentType>(environment_type_idx);
                     renderer.update_settings();
+                    renderer.reset_frames();
                 }
                 switch (renderer.get_settings().environment_type) {
                     case EnvironmentType::None: break;
@@ -397,14 +418,22 @@ int main(const int argc, char* argv[]) {
                 if (ImGui::Checkbox("Enable Sun", &enable_sun)) {
                     renderer.get_settings().sun = static_cast<Sun>(enable_sun);
                     renderer.update_settings();
+                    renderer.reset_frames();
                 }
                 if (enable_sun) {
                     show_sun_settings(renderer);
+                }
+                static float light_emission = renderer.get_settings().light_emission;
+                if (ImGui::DragFloat("Light Emission", &light_emission, 0.1f, 0.0f, 10'000.0f)) {
+                    renderer.get_settings().light_emission = light_emission;
+                    renderer.update_settings();
+                    renderer.reset_frames();
                 }
                 int fov = static_cast<int>(camera.get_fov());
                 if (ImGui::SliderInt("Field Of View", &fov, 30, 110)) {
                     camera.set_fov(static_cast<float>(fov));
                     renderer.update_settings();
+                    renderer.reset_frames();
                 }
                 if (ImGui::Button("Reload Shaders (R)")) {
                     renderer.reload_shaders();

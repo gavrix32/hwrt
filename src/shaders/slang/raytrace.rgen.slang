@@ -73,13 +73,13 @@ float3 get_accumulated_color(float3 color) {
 }
 
 float3 get_debug_color(RayDesc ray) {
-    float3 color = float3(0.0);
+    float3 color = 0.0.xxx;
 
     if (push_data.render_settings[0].debug_channel == DebugChannel::Heatmap) {
         color = heatmap(ray, float2(10000.0, 100000.0));
     } else {
         Payload payload = {};
-        payload.color = float3(0.0);
+        payload.color = 0.0.xxx;
 
         TraceRay(tlas, RAY_FLAG_NONE, 0xFF, 0, 0, 0, ray, payload);
         color = payload.color;
@@ -407,8 +407,8 @@ float3 offset_ray_origin(float3 hitpos, float3 normal) {
 
 float3 path_trace_uniform(RayDesc ray, int max_depth) {
     RenderSettings render_settings = push_data.render_settings[0];
-    float3 radiance = float3(0.0);
-    float3 throughput = float3(1.0);
+    float3 radiance = 0.0.xxx;
+    float3 throughput = 1.0.xxx;
     float sun_radius = render_settings.sun_radius;
 
     for (int depth = 0; depth < max_depth; ++depth) {
@@ -455,8 +455,8 @@ float3 path_trace_uniform(RayDesc ray, int max_depth) {
 
 float3 path_trace_importance(RayDesc ray, int max_depth) {
     RenderSettings render_settings = push_data.render_settings[0];
-    float3 radiance = float3(0.0);
-    float3 throughput = float3(1.0);
+    float3 radiance = 0.0.xxx;
+    float3 throughput = 1.0.xxx;
     float sun_radius = render_settings.sun_radius;
 
     for (int depth = 0; depth < max_depth; ++depth) {
@@ -503,8 +503,8 @@ float3 path_trace_importance(RayDesc ray, int max_depth) {
 
 float3 path_trace_nee(RayDesc ray, int max_depth) {
     RenderSettings render_settings = push_data.render_settings[0];
-    float3 radiance = float3(0.0);
-    float3 throughput = float3(1.0);
+    float3 radiance = 0.0.xxx;
+    float3 throughput = 1.0.xxx;
     float sun_radius = render_settings.sun_radius;
     float sun_emission = render_settings.sun_emission;
 
@@ -549,7 +549,7 @@ float3 path_trace_nee(RayDesc ray, int max_depth) {
         float3 light_dir = normalize(to_light);
         float light_lambert = dot(payload.normal, light_dir);
 
-        if (any(light.emission > 0.0) && light_lambert > 0.0) {
+        if (any(light.emission * render_settings.light_emission > 0.0) && light_lambert > 0.0) {
             RayDesc shadow_ray = {};
             shadow_ray.Origin = offset_ray_origin(hitpos, payload.normal);
             shadow_ray.Direction = light_dir;
@@ -566,15 +566,12 @@ float3 path_trace_nee(RayDesc ray, int max_depth) {
                 float brdf_pdf;
                 float3 brdf = evaluate_brdf(payload.color, payload.metallic, payload.roughness, payload.normal, V, light_dir, brdf_pdf);
                 float light_pdf = evaluate_light_pdf(light, to_light);
-                if (light_pdf < EPSILON) continue; // ?
-                float3 light_contrib = light.emission * light_lambert / light_pdf;
+                float3 light_contrib = light.emission * render_settings.light_emission * light_lambert / light_pdf;
                 radiance += throughput * brdf * light_contrib;
             }
         }
 
-        if (render_settings.sun == Sun.Enabled &&
-            render_settings.environment_type != EnvironmentType.None &&
-            render_settings.environment_type != EnvironmentType.Hdri) {
+        if (render_settings.sun == Sun.Enabled) {
             float3 sampled_dir = sample_cone(push_data.sun_dir, sun_radius);
             float sun_lambert = dot(payload.normal, sampled_dir);
             
@@ -594,7 +591,6 @@ float3 path_trace_nee(RayDesc ray, int max_depth) {
                     float3 brdf = evaluate_brdf(payload.color, payload.metallic, payload.roughness, payload.normal, V, sampled_dir, brdf_pdf);
                     float3 transmittance = sun_transmittance(push_data.sun_dir);
                     float sun_pdf = evaluate_cone_pdf(sun_radius);
-                    if (sun_pdf < EPSILON) continue; // ?
                     float3 sun_contrib = transmittance * sun_emission * sun_lambert / sun_pdf;
                     radiance += throughput * brdf * sun_contrib;
                 }
@@ -632,7 +628,7 @@ float3 path_trace_mis(RayDesc ray, int max_depth) {
             float cos_max = cos(sun_radius);
             bool sun_is_visible = cos_theta >= cos_max;
 
-            if (render_settings.sun == Sun.Enabled && sun_is_visible) {
+            if (render_settings.sun == Sun.Enabled && sun_radius > EPSILON && sun_is_visible) {
                 float3 transmittance = sun_transmittance(push_data.sun_dir);
                 float3 sun_contrib = transmittance * 50.0;
                 if (depth == 0) {
@@ -676,7 +672,7 @@ float3 path_trace_mis(RayDesc ray, int max_depth) {
         float3 light_dir = normalize(to_light);
         float light_lambert = dot(payload.normal, light_dir);
 
-        if (any(light.emission > 0.0) && light_lambert > 0.0) {
+        if (any(light.emission * render_settings.light_emission > 0.0) && light_lambert > 0.0) {
             RayDesc shadow_ray = {};
             shadow_ray.Origin = offset_ray_origin(hitpos, payload.normal);
             shadow_ray.Direction = light_dir;
@@ -694,14 +690,12 @@ float3 path_trace_mis(RayDesc ray, int max_depth) {
                 float3 brdf = evaluate_brdf(payload.color, payload.metallic, payload.roughness, payload.normal, V, light_dir, brdf_pdf);
                 float light_pdf = evaluate_light_pdf(light, to_light);
                 float mis_weight = power_heuristic(light_pdf, brdf_pdf);
-                float3 light_contrib = light.emission * light_lambert * mis_weight / light_pdf;
+                float3 light_contrib = light.emission * render_settings.light_emission * light_lambert * mis_weight / light_pdf;
                 radiance += throughput * brdf * light_contrib;
             }
         }
 
-        if (render_settings.sun == Sun.Enabled &&
-            render_settings.environment_type != EnvironmentType.None &&
-            render_settings.environment_type != EnvironmentType.Hdri) {
+        if (render_settings.sun == Sun.Enabled && sun_radius > EPSILON) {
             float3 sampled_dir = sample_cone(push_data.sun_dir, sun_radius);
             float sun_lambert = dot(payload.normal, sampled_dir);
             
@@ -778,7 +772,7 @@ void main() {
         return;
     }
 
-    float3 radiance = float3(0.0);
+    float3 radiance = 0.0.xxx;
 
     for (int sample = 0; sample < render_settings.samples; ++sample) {
         uint max_depth = render_settings.max_depth;

@@ -42,13 +42,13 @@ void main(uint3 thread_id : SV_DispatchThreadID) {
 
     RenderSettings render_settings = push_data.render_settings[0];
 
+    rt_color.rgb = neutral(rt_color.rgb * render_settings.exposure);
+
     if (render_settings.debug_channel == DebugChannel.None ||
         render_settings.debug_channel == DebugChannel.BaseColor) {
-        rt_color.rgb = neutral(rt_color.rgb);
         rt_color.rgb = pow(rt_color.rgb, 1.0 / 2.2);
     }
 
     float4 out_color = rt_color;
-
     out_image[thread_id.xy] = out_color;
 }

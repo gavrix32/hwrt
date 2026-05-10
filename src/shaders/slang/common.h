@@ -126,6 +126,7 @@ struct RenderSettings {
     uint32_t samples;
     uint32_t max_depth;
     uint32_t iterations;
+    float exposure;
     SamplingStrategy sampling_strategy;
     EnvironmentType environment_type;
     float3 sky_color;
@@ -134,6 +135,7 @@ struct RenderSettings {
     float3 sun_color;
     float sun_emission;
     float sun_radius;
+    float light_emission;
 };
 
 struct PushData {

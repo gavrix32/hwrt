@@ -195,6 +195,7 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
         .samples = 1,
         .max_depth = 4,
         .iterations = UINT32_MAX,
+        .exposure = 1.0f,
         .sampling_strategy = SamplingStrategy::MultipleImportanceSampling,
         .environment_type = EnvironmentType::Procedural,
         .sky_color = glm::vec3(0.3f, 0.6f, 1.0f),
@@ -202,7 +203,8 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
         .sun = Sun::Enabled,
         .sun_color = glm::vec3(1.0f),
         .sun_emission = 50'000.0f,
-        .sun_radius = 0.01
+        .sun_radius = 0.01,
+        .light_emission = 1.0f
     };
 
     auto render_settings_buffer = BufferBuilder()
@@ -581,7 +583,6 @@ void Renderer::reset_frames() {
 
 void Renderer::update_settings() {
     memcpy(res->render_settings_buffer.mapped_ptr(), &res->render_settings, sizeof(RenderSettings));
-    frame_count = 1;
 }
 
 void Renderer::reload_shaders() {

@@ -145,7 +145,7 @@ void main(inout Payload payload, in BuiltInTriangleIntersectionAttributes attr) 
     }
 
     payload.normal = s.shading_normal;
-    payload.emission = s.emissive;
+    payload.emission = s.emissive * render_settings.light_emission;
     payload.depth = RayTCurrent();
     payload.light_area = s.light_area;
     payload.metallic = s.metallic;
