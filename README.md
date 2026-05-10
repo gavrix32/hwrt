@@ -1,8 +1,7 @@
 # ⚡ Hardware Accelerated Ray Tracer (HWRT)
 > A high performance, physically based, progressive **Path Tracer** built from scratch using **C++20** and **Vulkan**.
 
-[![Platform](https://img.shields.io/badge/Platform-Windows-blue.svg)](https://www.microsoft.com/windows)
-[![Platform](https://img.shields.io/badge/Platform-Linux-black.svg)](https://www.linux.org/)
+![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-yellow)
 [![Vulkan](https://img.shields.io/badge/Vulkan-1.4-red.svg)](https://www.vulkan.org/)
 [![C++](https://img.shields.io/badge/C++-20-blue.svg)](https://isocpp.org/)
 
