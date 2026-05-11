@@ -28,13 +28,17 @@
 ## ✨ Features
 * Vulkan Ray Tracing Pipeline
 * Unidirectional Path Tracing
+* Frame Accumulation
+* Cook-Torrance BRDF
 * Physically Based Materials
 * Next Event Estimation
 * Multiple Importance Sampling
 * glTF 2.0 Scene Loading
+* Mesh Instancing
+* Procedural Atmosphere
+* Shader Hot Reload
 * Khronos PBR Neutral Tone mapping
 * Anti-Aliasing
-* Procedural Atmosphere
 
 ## 🖥️ Requirements
 * OS: Windows 10/11 (x64) / Linux (x64)
@@ -79,3 +83,9 @@ cmake ..
 cmake --build . --config Release
 hwrt.exe -m ..\assets\models\cornell_box.glb
 ```
+
+## 📃 License
+
+Copyright © 2026 Dmitry Gavrilov
+
+Distributed under the [MIT License](LICENSE).

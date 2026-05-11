@@ -2,7 +2,6 @@
 #include "atmosphere.slang"
 
 // TODO: auto exposure
-// TODO: light emission control
 // TODO: firefly clamping
 
 [[vk::push_constant]]
