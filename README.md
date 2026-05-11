@@ -1,9 +1,11 @@
 # ⚡ Hardware Accelerated Ray Tracer (HWRT)
-> A high performance, physically based, progressive **Path Tracer** built from scratch using **C++20** and **Vulkan**.
+> A high performance, physically based, progressive **Path Tracer** built from scratch using **C++20** and **Vulkan**
 
-![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-yellow)
-[![Vulkan](https://img.shields.io/badge/Vulkan-1.4-red.svg)](https://www.vulkan.org/)
-[![C++](https://img.shields.io/badge/C++-20-blue.svg)](https://isocpp.org/)
+[![License](https://img.shields.io/badge/License-MIT-mint)](https://mit-license.org/)
+[![Windows](https://img.shields.io/badge/Platform-Windows-blue)](https://www.microsoft.com/windows/)
+[![Linux](https://img.shields.io/badge/Platform-Linux-yellow)](https://www.linux.org/)
+[![Vulkan](https://img.shields.io/badge/Vulkan-1.4-red)](https://www.vulkan.org/)
+[![C++](https://img.shields.io/badge/C%2B%2B-20-blue)](https://isocpp.org/)
 
 ## 🖼️ Showcase
 <p align="center">
@@ -35,17 +37,45 @@
 * Procedural Atmosphere
 
 ## 🖥️ Requirements
-* OS: Windows/Linux (x64)
-* GPU: NVIDIA RTX or AMD RX 6000+
+* OS: Windows 10/11 (x64) / Linux (x64)
+* GPU: NVIDIA Turing (RTX 20 series) / AMD RDNA 2 (RX 6000 series)
 * Vulkan SDK: 1.4
+* Compiler: C++20 (GCC, Clang or MinGW)
 * CMake: 4.0
+* Shader Compiler: The [**Slang**](https://shader-slang.org/) compiler `slangc` must be on your `PATH` if you want to use the `Reload Shaders` feature
 
-## ⚙️ Build
+## ⚙️ Build & Run
+
+### Clone
 ```bash
 git clone --recursive https://github.com/gavrix32/hwrt.git
 cd hwrt
+
+# If you cloned without submodules
+git submodule update --init --recursive
+```
+
+### Linux
+
+```bash
+# Compile shaders (only needed after editing them)
+chmod +x src/shaders/compile.sh
+./src/shaders/compile.sh
+
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+cmake --build . -j$(nproc)
+./hwrt -m ../assets/models/cornell_box.glb
+```
+
+### Windows
+
+```batch
+:: Compile shaders (only needed after editing them)
+src\shaders\compile.bat
+
 mkdir build && cd build
 cmake ..
 cmake --build . --config Release
-./hwrt -m ../assets/models/cornell_box.glb
+hwrt.exe -m ..\assets\models\cornell_box.glb
 ```
