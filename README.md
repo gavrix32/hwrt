@@ -45,7 +45,7 @@
 * GPU: NVIDIA Turing (RTX 20 series) / AMD RDNA 2 (RX 6000 series)
 * Vulkan SDK: 1.4
 * Compiler: C++20 (GCC, Clang or MinGW)
-* CMake: 4.0
+* CMake: 3.20
 * Shader Compiler: The [**Slang**](https://shader-slang.org/) compiler `slangc` must be on your `PATH` if you want to use the `Reload Shaders` feature
 
 ## ⚙️ Build & Run
