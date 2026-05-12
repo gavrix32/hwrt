@@ -1,10 +1,10 @@
-#include <GLFW/glfw3.h>
-
+#include "swapchain.h"
 #include "adapter.h"
 #include "device.h"
 #include "image.h"
 #include "utils.h"
-#include "swapchain.h"
+
+#include <GLFW/glfw3.h>
 
 vk::Extent2D choose_extent(GLFWwindow* window, const vk::SurfaceCapabilitiesKHR& capabilities) {
     if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
