@@ -20,7 +20,6 @@ Device::Device(const Adapter& adapter, const std::vector<const char*>& required_
         if (flags & vk::QueueFlagBits::eVideoDecodeKHR) flag_names += "VideoDecodeKHR | ";
         if (flags & vk::QueueFlagBits::eVideoEncodeKHR) flag_names += "VideoEncodeKHR | ";
         if (flags & vk::QueueFlagBits::eOpticalFlowNV) flag_names += "OpticalFlowNV | ";
-        if (flags & vk::QueueFlagBits::eDataGraphARM) flag_names += "DataGraphARM | ";
 
         spdlog::debug("queue_family_index: {}, queue_count: {}, queue_flags: {}",
                       queue_fam_i,
@@ -49,7 +48,7 @@ Device::Device(const Adapter& adapter, const std::vector<const char*>& required_
                        vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
                        vk::PhysicalDeviceRayTracingPipelineFeaturesKHR,
                        vk::PhysicalDeviceShaderClockFeaturesKHR,
-                       vk::PhysicalDeviceRobustness2FeaturesKHR> features_chain;
+                       vk::PhysicalDeviceRobustness2FeaturesEXT> features_chain;
 
     features_chain.get<vk::PhysicalDeviceVulkan12Features>().scalarBlockLayout = vk::True;
     features_chain.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress = vk::True;
@@ -64,7 +63,7 @@ Device::Device(const Adapter& adapter, const std::vector<const char*>& required_
     features_chain.get<vk::PhysicalDeviceFeatures2>().features.shaderInt64 = vk::True;
     features_chain.get<vk::PhysicalDeviceShaderClockFeaturesKHR>().shaderDeviceClock = vk::True;
     features_chain.get<vk::PhysicalDeviceShaderClockFeaturesKHR>().shaderSubgroupClock = vk::True;
-    features_chain.get<vk::PhysicalDeviceRobustness2FeaturesKHR>().nullDescriptor = vk::True;
+    features_chain.get<vk::PhysicalDeviceRobustness2FeaturesEXT>().nullDescriptor = vk::True;
 
     const vk::DeviceCreateInfo device_create_info{
         .pNext = &features_chain.get<vk::PhysicalDeviceFeatures2>(),
