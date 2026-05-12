@@ -46,27 +46,27 @@ void Window::terminate() {
     spdlog::info("GLFW terminated");
 }
 
-GLFWwindow* Window::get() {
+inline GLFWwindow* Window::get() {
     return handle;
 }
 
-bool Window::should_close() {
+inline bool Window::should_close() {
     return glfwWindowShouldClose(handle);
 }
 
-int Window::get_width() {
+inline int Window::get_width() {
     return width_;
 }
 
-int Window::get_height() {
+inline int Window::get_height() {
     return height_;
 }
 
-float Window::get_aspect_ratio() {
+inline float Window::get_aspect_ratio() {
     return static_cast<float>(width_) / static_cast<float>(height_);
 }
 
-bool Window::was_resized() {
+inline bool Window::was_resized() {
     if (resized) {
         resized = false;
         return true;

@@ -19,7 +19,8 @@ class Swapchain {
 
 public:
     explicit Swapchain(const Adapter& adapter,
-                       const Device& device, GLFWwindow* window,
+                       const Device& device,
+                       GLFWwindow* window,
                        const vk::SurfaceKHR& surface,
                        const vk::raii::SwapchainKHR& old_handle);
 

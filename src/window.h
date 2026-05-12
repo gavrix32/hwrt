@@ -5,14 +5,13 @@
 class GLFWwindow;
 
 class Window {
-    inline static GLFWwindow* handle;
-    inline static int width_;
-    inline static int height_;
-    inline static bool resized;
+    inline static GLFWwindow* handle = nullptr;
+    inline static int width_ = 0;
+    inline static int height_ = 0;
+    inline static bool resized = false;
 
 public:
     static void init(int width, int height, const std::string& title);
-
     static void terminate();
 
     [[nodiscard]] static GLFWwindow* get();
