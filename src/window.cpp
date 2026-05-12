@@ -1,7 +1,5 @@
 #include <spdlog/spdlog.h>
 
-#include <GLFW/glfw3.h>
-
 #include "window.h"
 #include "input.h"
 #include "vulkan/utils.h"
@@ -44,34 +42,6 @@ void Window::terminate() {
     }
     glfwTerminate();
     spdlog::info("GLFW terminated");
-}
-
-inline GLFWwindow* Window::get() {
-    return handle;
-}
-
-inline bool Window::should_close() {
-    return glfwWindowShouldClose(handle);
-}
-
-inline int Window::get_width() {
-    return width_;
-}
-
-inline int Window::get_height() {
-    return height_;
-}
-
-inline float Window::get_aspect_ratio() {
-    return static_cast<float>(width_) / static_cast<float>(height_);
-}
-
-inline bool Window::was_resized() {
-    if (resized) {
-        resized = false;
-        return true;
-    }
-    return false;
 }
 
 void Window::poll_events() {

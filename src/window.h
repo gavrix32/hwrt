@@ -2,6 +2,8 @@
 
 #include <string>
 
+#include <GLFW/glfw3.h>
+
 class GLFWwindow;
 
 class Window {
@@ -14,12 +16,33 @@ public:
     static void init(int width, int height, const std::string& title);
     static void terminate();
 
-    [[nodiscard]] static GLFWwindow* get();
-    [[nodiscard]] static bool should_close();
-    [[nodiscard]] static int get_width();
-    [[nodiscard]] static int get_height();
-    [[nodiscard]] static float get_aspect_ratio();
-    [[nodiscard]] static bool was_resized();
+    [[nodiscard]] static GLFWwindow* get() {
+        return handle;
+    }
+
+    [[nodiscard]] static bool should_close() {
+        return glfwWindowShouldClose(handle);
+    }
+
+    [[nodiscard]] static int get_width() {
+        return width_;
+    }
+
+    [[nodiscard]] static int get_height() {
+        return height_;
+    }
+
+    [[nodiscard]] static float get_aspect_ratio() {
+        return static_cast<float>(width_) / static_cast<float>(height_);
+    }
+
+    [[nodiscard]] static bool was_resized() {
+        if (resized) {
+            resized = false;
+            return true;
+        }
+        return false;
+    }
 
     static void poll_events();
     static void hide();
