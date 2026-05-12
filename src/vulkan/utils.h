@@ -6,6 +6,14 @@
 
 #include <spdlog/spdlog.h>
 
+#ifndef __PRETTY_FUNCTION__
+    #ifdef _MSC_VER
+        #define __PRETTY_FUNCTION__ __FUNCSIG__
+    #else
+        #define __PRETTY_FUNCTION__ __FUNCTION__
+    #endif
+#endif
+
 #define SCOPED_TIMER() ScopedTimer timer(__PRETTY_FUNCTION__)
 #define SCOPED_TIMER_NAMED(...) ScopedTimer timer(fmt::format("{}: {}", __PRETTY_FUNCTION__, fmt::format(__VA_ARGS__)))
 

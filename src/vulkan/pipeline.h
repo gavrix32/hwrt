@@ -1,5 +1,8 @@
 #pragma once
 
+#include <optional>
+#include <string>
+
 #include <vulkan/vulkan_raii.hpp>
 
 class Device;
