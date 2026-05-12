@@ -246,18 +246,16 @@ void Renderer::draw_frame(const Scene& scene) {
         .semaphore = frame_mgr->get_image_available_semaphore(),
         .deviceMask = 1,
     };
-    auto acquire_result = ctx.get_device().get().acquireNextImage2KHR(acquire_info);
+    auto [acquire_result, image_index] = ctx.get_device().get().acquireNextImage2KHR(acquire_info);
 
-    if (acquire_result.result == vk::Result::eErrorOutOfDateKHR ||
-        acquire_result.result == vk::Result::eSuboptimalKHR) {
+    if (acquire_result == vk::Result::eErrorOutOfDateKHR ||
+        acquire_result == vk::Result::eSuboptimalKHR) {
         recreate();
         frame_mgr->recreate_image_available_semaphores(ctx.get_device());
         return;
     }
 
     ctx.get_device().get().resetFences({frame_mgr->get_in_flight_fence()});
-
-    uint32_t image_index = acquire_result.value;
 
     encoder->begin(frame_mgr->get_frame_index());
     auto& cmd = encoder->get_cmd();
