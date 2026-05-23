@@ -28,22 +28,22 @@ The table below demonstrates the visual and mathematical impact of each sampling
 <table>
   <thead>
     <tr>
-      <th align="center">Metric / Method</th>
-      <th align="center">Uniform (Naive)</th>
-      <th align="center">BRDF Importance</th>
-      <th align="center">Next Event Estimation</th>
-      <th align="center">Multiple Importance Sampling</th>
-      <th align="center">Reference</th>
+      <th align="center" width="15%">Metric / Method</th>
+      <th align="center" width="15%">Uniform (Naive)</th>
+      <th align="center" width="15%">BRDF Importance</th>
+      <th align="center" width="15%">Next Event Estimation</th>
+      <th align="center" width="15%">Multiple Importance Sampling</th>
+      <th align="center" width="15%">Reference</th>
     </tr>
   </thead>
   <tbody>
     <tr>
       <td align="center"><b>Render Preview</b></td>
-      <td align="center"><img src="screenshots/covergence/uniform.png" width="160" alt="Uniform"/></td>
-      <td align="center"><img src="screenshots/covergence/importance.png" width="160" alt="Importance"/></td>
-      <td align="center"><img src="screenshots/covergence/nee.png" width="160" alt="NEE"/></td>
-      <td align="center"><img src="screenshots/covergence/mis.png" width="160" alt="MIS"/></td>
-      <td align="center"><img src="screenshots/covergence/reference.png" width="160" alt="Reference"/></td>
+      <td align="center"><img src="screenshots/covergence/uniform.png" width="100%" alt="Uniform"/></td>
+      <td align="center"><img src="screenshots/covergence/importance.png" width="100%" alt="Importance"/></td>
+      <td align="center"><img src="screenshots/covergence/nee.png" width="100%" alt="NEE"/></td>
+      <td align="center"><img src="screenshots/covergence/mis.png" width="100%" alt="MIS"/></td>
+      <td align="center"><img src="screenshots/covergence/reference.png" width="100%" alt="Reference"/></td>
     </tr>
     <tr>
       <td align="center"><b>rMSE</b></td>
@@ -63,8 +63,6 @@ The table below demonstrates the visual and mathematical impact of each sampling
     </tr>
   </tbody>
 </table>
-
-
 
 ## ✨ Features
 * Vulkan Ray Tracing Pipeline
