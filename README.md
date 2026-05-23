@@ -20,10 +20,51 @@
   <img src="screenshots/sponza.png" alt="Crytek Sponza">
   <em>Crytek Sponza</em>
 </p>
-<p align="center">
-  <img src="screenshots/cornell_box.png" alt="Cornell Box">
-  <em>Cornell Box</em>
-</p>
+
+### 📈 Visual Comparison & Convergence Metrics
+
+The table below demonstrates the visual and mathematical impact of each sampling technique at **64 samples per pixel (spp)** compared to the fully converged ground truth reference.
+
+<table>
+  <thead>
+    <tr>
+      <th align="center">Metric / Method</th>
+      <th align="center">Uniform (Naive)</th>
+      <th align="center">BRDF Importance</th>
+      <th align="center">Next Event Estimation</th>
+      <th align="center">Multiple Importance Sampling</th>
+      <th align="center">Reference</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td align="center"><b>Render Preview</b></td>
+      <td align="center"><img src="screenshots/covergence/uniform.png" width="160" alt="Uniform"/></td>
+      <td align="center"><img src="screenshots/covergence/importance.png" width="160" alt="Importance"/></td>
+      <td align="center"><img src="screenshots/covergence/nee.png" width="160" alt="NEE"/></td>
+      <td align="center"><img src="screenshots/covergence/mis.png" width="160" alt="MIS"/></td>
+      <td align="center"><img src="screenshots/covergence/reference.png" width="160" alt="Reference"/></td>
+    </tr>
+    <tr>
+      <td align="center"><b>rMSE</b></td>
+      <td align="center">0.581786</td>
+      <td align="center">0.435968</td>
+      <td align="center">0.006408</td>
+      <td align="center">0.006402</td>
+      <td align="center">-</td>
+    </tr>
+    <tr>
+      <td align="center"><b>Convergence Boost</b></td>
+      <td align="center">1x</td>
+      <td align="center">1.33x</td>
+      <td align="center">90.80x</td>
+      <td align="center"><b>90.87x</b></td>
+      <td align="center">-</td>
+    </tr>
+  </tbody>
+</table>
+
+
 
 ## ✨ Features
 * Vulkan Ray Tracing Pipeline
