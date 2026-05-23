@@ -46,19 +46,19 @@ The table below demonstrates the visual and mathematical impact of each sampling
       <td align="center"><img src="screenshots/covergence/reference.png" width="100%" alt="Reference"/></td>
     </tr>
     <tr>
-      <td align="center"><b>rMSE</b></td>
-      <td align="center">0.581786</td>
-      <td align="center">0.435968</td>
-      <td align="center">0.006408</td>
-      <td align="center">0.006402</td>
+      <td align="center"><b>RMSE</b></td>
+      <td align="center">0.170272</td>
+      <td align="center">0.150286</td>
+      <td align="center">0.011463</td>
+      <td align="center">0.011457</td>
       <td align="center">-</td>
     </tr>
     <tr>
       <td align="center"><b>Convergence Boost</b></td>
       <td align="center">1x</td>
-      <td align="center">1.33x</td>
-      <td align="center">90.80x</td>
-      <td align="center"><b>90.87x</b></td>
+      <td align="center">1.28x</td>
+      <td align="center">220.66x</td>
+      <td align="center"><b>220.88x</b></td>
       <td align="center">-</td>
     </tr>
   </tbody>
