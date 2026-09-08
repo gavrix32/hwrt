@@ -590,7 +590,12 @@ void Renderer::reload_shaders() {
     const auto build_dir = exec_path.parent_path();
     const auto shader_dir = build_dir.parent_path() / "src" / "shaders";
 
+#ifdef _WIN32
+    utils::run_bash_script((shader_dir / "compile.bat").string());
+#else
     utils::run_bash_script("bash " + (shader_dir / "compile.sh").string());
+#endif
+
     res->rt_pipeline = create_rt_pipeline(ctx, res->rt_descriptor_set_layout);
     res->compute_pipeline = create_compute_pipeline(ctx, res->compute_descriptor_set_layout);
     res->sbt = create_sbt(ctx, res->rt_pipeline);

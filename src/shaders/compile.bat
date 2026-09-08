@@ -20,16 +20,6 @@ call :compile compute       || exit /b 1
 echo Done
 exit /b 0
 
-:get_ts
-set "TS="
-for /f "skip=1 tokens=1 delims=." %%A in ('wmic datafile where "name='%~1'" get LastModified 2^>nul') do (
-  if not "%%A"=="" (
-    set "TS=%%A"
-    goto :eof
-  )
-)
-goto :eof
-
 :compile
 set "NAME=%~1"
 set "SRC=%SHADER_DIR%\%NAME%.slang"
@@ -40,31 +30,23 @@ if not exist "%SRC%" (
   exit /b 1
 )
 
-REM
-set "NEEDS_BUILD=0"
-if not exist "%DST%" (
-  set "NEEDS_BUILD=1"
-) else (
-  set "SRC_WMIC=%SRC:\=\\%"
-  set "DST_WMIC=%DST:\=\\%"
-  call :get_ts "%SRC_WMIC%"
-  set "SRC_TS=%TS%"
-  call :get_ts "%DST_WMIC%"
-  set "DST_TS=%TS%"
-  if not "%SRC_TS%"=="" if not "%DST_TS%"=="" (
-    if "%SRC_TS%" GTR "%DST_TS%" set "NEEDS_BUILD=1"
-  ) else (
-    set "NEEDS_BUILD=1"
-  )
-)
+if not exist "%DST%" goto :build
 
-if "%NEEDS_BUILD%"=="1" (
-  echo - %NAME%
-  "%SLANGC_EXE%" -I "%SHADER_DIR%" "%SRC%" -target spirv -profile spirv_1_6 -matrix-layout-column-major -fvk-use-scalar-layout -capability spvShaderClockKHR -o "%DST%"
-  if errorlevel 1 (
-    echo Failed to compile %NAME%
-    exit /b 1
-  )
+REM Pass paths through the environment, so spaces and quotes stay literal.
+REM Exit codes: 0 = up to date, 1 = rebuild, 2 = timestamp check failed.
+powershell.exe -NoLogo -NoProfile -NonInteractive -Command "$ErrorActionPreference = 'Stop'; try { if ((Get-Item -LiteralPath $env:SRC).LastWriteTimeUtc -gt (Get-Item -LiteralPath $env:DST).LastWriteTimeUtc) { exit 1 }; exit 0 } catch { Write-Error $_ -ErrorAction Continue; exit 2 }"
+if errorlevel 2 (
+  echo Failed to check timestamps for %NAME%
+  exit /b 1
+)
+if not errorlevel 1 exit /b 0
+
+:build
+echo - %NAME%
+"%SLANGC_EXE%" -I "%SHADER_DIR%" "%SRC%" -target spirv -profile spirv_1_6 -matrix-layout-column-major -fvk-use-scalar-layout -capability spvShaderClockKHR -o "%DST%"
+if not "%errorlevel%"=="0" (
+  echo Failed to compile %NAME%
+  exit /b 1
 )
 exit /b 0
 

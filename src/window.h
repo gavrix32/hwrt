@@ -4,8 +4,6 @@
 
 #include <GLFW/glfw3.h>
 
-class GLFWwindow;
-
 class Window {
     inline static GLFWwindow* handle = nullptr;
     inline static int width_ = 0;

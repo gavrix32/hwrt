@@ -279,7 +279,10 @@ float3 evaluate_brdf(float3 base_color, float metallic, float roughness, float3 
     float pdf_diff = evaluate_cosine_pdf(NdotL);
     pdf = p_spec * pdf_spec + (1.0 - p_spec) * pdf_diff;
 
-    return diffuse + specular;
+    float3 brdf_value = diffuse + specular;
+    brdf_value = max(brdf_value, 0.0);
+
+    return brdf_value;
 }
 
 float3 sample_brdf(float3 base_color, float metallic, float roughness, float3 N, float3 V) {
@@ -600,7 +603,9 @@ float3 path_trace_nee(RayDesc ray, int max_depth) {
         float brdf_pdf;
         float3 brdf = evaluate_brdf(payload.color, payload.metallic, payload.roughness, payload.normal, V, next_dir, brdf_pdf);
         float lambert = dot(next_dir, payload.normal);
-        throughput *= brdf * lambert / brdf_pdf;
+        float3 contrib = brdf * lambert / brdf_pdf;
+        contrib = max(contrib, 0.0);
+        throughput *= contrib;
 
         ray.Origin = offset_ray_origin(hitpos, payload.normal);
         ray.Direction = next_dir;
@@ -725,7 +730,9 @@ float3 path_trace_mis(RayDesc ray, int max_depth) {
         float brdf_pdf;
         float3 brdf = evaluate_brdf(payload.color, payload.metallic, payload.roughness, payload.normal, V, next_dir, brdf_pdf);
         float lambert = dot(next_dir, payload.normal);
-        throughput *= brdf * lambert / brdf_pdf;
+        float3 contrib = brdf * lambert / brdf_pdf;
+        contrib = max(contrib, 0.0);
+        throughput *= contrib;
         last_pdf = brdf_pdf;
 
         ray.Origin = offset_ray_origin(hitpos, payload.normal);

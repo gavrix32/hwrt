@@ -4,7 +4,7 @@
 
 #include "image.h"
 
-class GLFWwindow;
+struct GLFWwindow;
 
 class Instance;
 class Adapter;
