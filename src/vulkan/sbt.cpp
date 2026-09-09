@@ -61,7 +61,7 @@ ShaderBindingTable::ShaderBindingTable(const Adapter& adapter, const Device& dev
     rgen_region = vk::StridedDeviceAddressRegionKHR{
         .deviceAddress = address + offset,
         .stride = handle_stride,
-        .size = rgen_size
+        .size = handle_stride
     };
     offset += rgen_size;
 
@@ -71,7 +71,7 @@ ShaderBindingTable::ShaderBindingTable(const Adapter& adapter, const Device& dev
         rmiss_region = vk::StridedDeviceAddressRegionKHR{
             .deviceAddress = address + offset,
             .stride = handle_stride,
-            .size = rmiss_size
+            .size = rmiss_count * handle_stride
         };
     }
     offset += rmiss_size;
@@ -82,7 +82,7 @@ ShaderBindingTable::ShaderBindingTable(const Adapter& adapter, const Device& dev
         hit_region = vk::StridedDeviceAddressRegionKHR{
             .deviceAddress = address + offset,
             .stride = handle_stride,
-            .size = hit_size
+            .size = hit_count * handle_stride
         };
     }
 }
