@@ -3,6 +3,7 @@
 #include <GLFW/glfw3.h>
 
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <fstream>
 
@@ -378,12 +379,19 @@ void Renderer::draw_frame(const Scene& scene) {
 
     // Push constants
 
+    const auto extent = swapchain->get_extent();
+    const bool is_debug = res->render_settings.debug_channel != DebugChannel::None;
+    const float scale = (frame_reset && !is_debug) ? reduced_render_scale : 1.0f;
+    const auto render_width = static_cast<uint32_t>(std::ceil(extent.width * scale));
+    const auto render_height = static_cast<uint32_t>(std::ceil(extent.height * scale));
+
     PushData push_data{
         .scene_ptrs = scene.get_scene_ptrs(),
         .render_settings = render_settings_buffer.get_device_address(ctx.get_device()),
         .frame_count = frame_count,
         .num_lights = scene.get_num_lights(),
-        .sun_dir = sun_dir
+        .sun_dir = sun_dir,
+        .render_resolution = {render_width, render_height}
     };
 
     vk::PushConstantsInfo rt_push_constants_info{
@@ -432,8 +440,8 @@ void Renderer::draw_frame(const Scene& scene) {
                          res->sbt.get_rmiss_region(),
                          res->sbt.get_hit_region(),
                          {},
-                         swapchain->get_extent().width,
-                         swapchain->get_extent().height,
+                         render_width,
+                         render_height,
                          1);
     }
 

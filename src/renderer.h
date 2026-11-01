@@ -48,6 +48,9 @@ class Renderer {
 public:
     glm::vec3 sun_dir = glm::normalize(glm::vec3(0.3f, 0.8f, 0.5f));
 
+    // Resolution scale while camera is moving
+    float reduced_render_scale = 0.25f;
+
     explicit Renderer(Context& ctx_);
 
     void draw_frame(const Scene& scene);

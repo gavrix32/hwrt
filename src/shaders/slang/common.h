@@ -2,6 +2,7 @@
 
 #ifdef __cplusplus
     #include <glm/glm.hpp>
+    using uint2 = glm::uvec2;
     using float2 = glm::vec2;
     using float3 = glm::vec3;
     using float4 = glm::vec4;
@@ -161,4 +162,5 @@ struct PushData {
     uint32_t frame_count;
     uint32_t num_lights;
     float3 sun_dir;
+    uint2 render_resolution;
 };

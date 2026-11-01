@@ -50,7 +50,13 @@ void main(uint3 thread_id : SV_DispatchThreadID, uint group_index : SV_GroupInde
 
     bool inside = thread_id.x < width && thread_id.y < height;
 
-    float4 rt_color = inside ? rt_image[thread_id.xy] : float4(0.0);
+    // rt_image holds the ray traced result in its top-left render_resolution region.
+    // Map the output pixel to it (nearest) so a reduced resolution render is upscaled to the full image.
+    uint2 render_res = push_data.render_resolution;
+    float2 src_uv = (float2(thread_id.xy) + 0.5) / float2(width, height);
+    uint2 src_px = min(uint2(src_uv * float2(render_res)), render_res - 1);
+
+    float4 rt_color = inside ? rt_image[src_px] : float4(0.0);
 
     // Auto exposure measurement (before exposure and tone mapping).
     // log2 luminance is clamped to [-20, 12] and shifted to [0, 32]; NaN/Inf and out-of-bounds threads contribute 0.
