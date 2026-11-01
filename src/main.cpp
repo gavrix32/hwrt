@@ -371,9 +371,18 @@ int main(const int argc, char* argv[]) {
                     renderer.get_settings().iterations = iterations;
                     renderer.reset_frames();
                 }
-                float exposure = renderer.get_settings().exposure;
-                if (ImGui::SliderFloat("Exposure", &exposure, 0.0f, 50.0f)) {
-                    renderer.get_settings().exposure = exposure;
+                bool autoexposure = renderer.get_settings().autoexposure != 0;
+                if (ImGui::Checkbox("Autoexposure", &autoexposure)) {
+                    renderer.get_settings().autoexposure = autoexposure ? 1 : 0;
+                }
+                if (autoexposure) {
+                    ImGui::SliderFloat("Compensation (EV)", &renderer.get_settings().exposure_compensation, -5.0f, 5.0f);
+                    ImGui::SliderFloat("Adaptation Speed", &renderer.get_settings().adaptation_speed, 0.1f, 20.0f);
+                } else {
+                    float exposure = renderer.get_settings().exposure;
+                    if (ImGui::SliderFloat("Exposure", &exposure, 0.0f, 50.0f)) {
+                        renderer.get_settings().exposure = exposure;
+                    }
                 }
                 const char* sampling_strategy_items[] = {
                     "Uniform Sampling",

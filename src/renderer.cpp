@@ -2,6 +2,7 @@
 
 #include <GLFW/glfw3.h>
 
+#include <algorithm>
 #include <iostream>
 #include <fstream>
 
@@ -15,7 +16,7 @@
 #include "window.h"
 #include "vulkan/sbt.h"
 
-RayTracingPipeline create_rt_pipeline(const Context& ctx, const vk::raii::DescriptorSetLayout& layout) {
+static RayTracingPipeline create_rt_pipeline(const Context& ctx, const vk::raii::DescriptorSetLayout& layout) {
     constexpr vk::PushConstantRange rt_push_constant_range{
         .stageFlags = vk::ShaderStageFlagBits::eRaygenKHR |
                       vk::ShaderStageFlagBits::eClosestHitKHR |
@@ -39,7 +40,9 @@ RayTracingPipeline create_rt_pipeline(const Context& ctx, const vk::raii::Descri
            .build(ctx.get_device());
 }
 
-ComputePipeline create_compute_pipeline(const Context& ctx, const vk::raii::DescriptorSetLayout& layout) {
+static ComputePipeline create_compute_pipeline(const Context& ctx,
+                                               const vk::raii::DescriptorSetLayout& layout,
+                                               const std::string& shader) {
     constexpr vk::PushConstantRange compute_push_constant_range{
         .stageFlags = vk::ShaderStageFlagBits::eCompute,
         .offset = 0,
@@ -51,7 +54,7 @@ ComputePipeline create_compute_pipeline(const Context& ctx, const vk::raii::Desc
     const auto spirv_dir = build_dir.parent_path() / "src" / "shaders" / "spirv";
 
     return ComputePipelineBuilder()
-           .stage((spirv_dir / "compute.spv").string())
+           .stage((spirv_dir / shader).string())
            .descriptor_set_layout(layout)
            .push_constant_range(compute_push_constant_range)
            .build(ctx.get_device());
@@ -112,6 +115,15 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
                                 vk::PipelineStageFlagBits2::eComputeShader,
                                 vk::AccessFlagBits2::eShaderWrite);
 
+    auto exposure_buffer = BufferBuilder()
+                           .size(sizeof(ExposureState))
+                           .usage(vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst)
+                           .memory_usage(VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE)
+                           .build(ctx.get_allocator());
+
+    // Zero state: ev = 0 (exposure x1), no accumulated measurement
+    single_time_encoder.get_cmd().fillBuffer(exposure_buffer.get(), 0, vk::WholeSize, 0);
+
     single_time_encoder.submit(ctx.get_device());
 
     // Ray Tracing Push Descriptors
@@ -163,6 +175,14 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
     };
     compute_push_bindings.push_back(compute_storage_image_binding);
 
+    vk::DescriptorSetLayoutBinding compute_exposure_binding{
+        .binding = 1,
+        .descriptorType = vk::DescriptorType::eStorageBuffer,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eAll,
+    };
+    compute_push_bindings.push_back(compute_exposure_binding);
+
     // Compute Descriptor set layouts
 
     vk::DescriptorSetLayoutCreateInfo compute_push_descriptor_set_layout_info{
@@ -179,7 +199,8 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
 
     // Compute Pipeline
 
-    auto compute_pipeline = create_compute_pipeline(ctx, compute_push_descriptor_set_layout);
+    auto compute_pipeline = create_compute_pipeline(ctx, compute_push_descriptor_set_layout, "compute.spv");
+    auto autoexposure_pipeline = create_compute_pipeline(ctx, compute_push_descriptor_set_layout, "autoexposure.spv");
 
     // Shader Binding Table
 
@@ -204,7 +225,13 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
         .sun_color = glm::vec3(1.0f),
         .sun_emission = 50'000.0f,
         .sun_radius = 0.01,
-        .light_emission = 1.0f
+        .light_emission = 1.0f,
+        .autoexposure = 1,
+        .exposure_compensation = 0.0f,
+        .adaptation_speed = 3.0f,
+        .min_ev = -16.0f,
+        .max_ev = 16.0f,
+        .delta_time = 0.0f
     };
 
     ctx.get_device().get_queue().waitIdle();
@@ -215,11 +242,13 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
         .compute_descriptor_set_layout = std::move(compute_push_descriptor_set_layout),
         .rt_pipeline = std::move(rt_pipeline),
         .compute_pipeline = std::move(compute_pipeline),
+        .exposure_pipeline = std::move(autoexposure_pipeline),
         .sbt = std::move(sbt),
         .rt_image = std::move(rt_image),
         .out_image = std::move(out_image),
         .rt_image_view = std::move(rt_image_view),
         .out_image_view = std::move(out_image_view),
+        .exposure_buffer = std::move(exposure_buffer),
         .render_settings = render_settings,
     });
 }
@@ -247,6 +276,8 @@ void Renderer::draw_frame(const Scene& scene) {
     ctx.get_device().get().resetFences({frame_mgr->get_in_flight_fence()});
 
     // Update render settings buffer
+    exposure_timer.tick();
+    res->render_settings.delta_time = exposure_timer.get_delta();
     auto& render_settings_buffer = frame_mgr->get_render_settings_buffer();
     memcpy(render_settings_buffer.mapped_ptr(), &res->render_settings, sizeof(RenderSettings));
 
@@ -330,7 +361,20 @@ void Renderer::draw_frame(const Scene& scene) {
         .pImageInfo = compute_descriptor_image_infos.data(),
     };
 
-    std::vector compute_writes{compute_write_out_images};
+    vk::DescriptorBufferInfo compute_exposure_info{
+        .buffer = res->exposure_buffer.get(),
+        .offset = 0,
+        .range = sizeof(ExposureState),
+    };
+
+    vk::WriteDescriptorSet compute_write_exposure{
+        .dstBinding = 1,
+        .descriptorCount = 1,
+        .descriptorType = vk::DescriptorType::eStorageBuffer,
+        .pBufferInfo = &compute_exposure_info,
+    };
+
+    std::vector compute_writes{compute_write_out_images, compute_write_exposure};
 
     // Push constants
 
@@ -347,6 +391,14 @@ void Renderer::draw_frame(const Scene& scene) {
         .stageFlags = vk::ShaderStageFlagBits::eRaygenKHR |
                       vk::ShaderStageFlagBits::eClosestHitKHR |
                       vk::ShaderStageFlagBits::eAnyHitKHR,
+        .offset = 0,
+        .size = sizeof(PushData),
+        .pValues = &push_data,
+    };
+
+    vk::PushConstantsInfo exposure_push_constants_info{
+        .layout = res->exposure_pipeline.get_layout(),
+        .stageFlags = vk::ShaderStageFlagBits::eCompute,
         .offset = 0,
         .size = sizeof(PushData),
         .pValues = &push_data,
@@ -383,21 +435,41 @@ void Renderer::draw_frame(const Scene& scene) {
                          swapchain->get_extent().width,
                          swapchain->get_extent().height,
                          1);
-
-        res->rt_image.transition_layout(cmd,
-                                        vk::ImageLayout::eGeneral,
-                                        vk::PipelineStageFlagBits2::eComputeShader,
-                                        vk::AccessFlagBits2::eShaderStorageRead);
-
-        cmd.bindPipeline(vk::PipelineBindPoint::eCompute, res->compute_pipeline.get());
-        cmd.pushDescriptorSet(vk::PipelineBindPoint::eCompute, res->compute_pipeline.get_layout(), 0, compute_writes);
-        cmd.pushConstants2(compute_push_constants_info);
-
-        uint32_t group_count_x = (swapchain->get_extent().width + 16 - 1) / 16;
-        uint32_t group_count_y = (swapchain->get_extent().height + 16 - 1) / 16;
-
-        cmd.dispatch(group_count_x, group_count_y, 1);
     }
+
+    res->rt_image.transition_layout(cmd,
+                                    vk::ImageLayout::eGeneral,
+                                    vk::PipelineStageFlagBits2::eComputeShader,
+                                    vk::AccessFlagBits2::eShaderStorageRead);
+
+    cmd.bindPipeline(vk::PipelineBindPoint::eCompute, res->compute_pipeline.get());
+    cmd.pushDescriptorSet(vk::PipelineBindPoint::eCompute, res->compute_pipeline.get_layout(), 0, compute_writes);
+    cmd.pushConstants2(compute_push_constants_info);
+
+    uint32_t group_count_x = (swapchain->get_extent().width + 16 - 1) / 16;
+    uint32_t group_count_y = (swapchain->get_extent().height + 16 - 1) / 16;
+
+    cmd.dispatch(group_count_x, group_count_y, 1);
+
+    constexpr vk::MemoryBarrier2 exposure_barrier{
+        .srcStageMask = vk::PipelineStageFlagBits2::eComputeShader,
+        .srcAccessMask = vk::AccessFlagBits2::eShaderStorageWrite,
+        .dstStageMask = vk::PipelineStageFlagBits2::eComputeShader,
+        .dstAccessMask = vk::AccessFlagBits2::eShaderStorageRead | vk::AccessFlagBits2::eShaderStorageWrite,
+    };
+    const vk::DependencyInfo exposure_dependency{
+        .memoryBarrierCount = 1,
+        .pMemoryBarriers = &exposure_barrier,
+    };
+
+    cmd.pipelineBarrier2(exposure_dependency);
+
+    cmd.bindPipeline(vk::PipelineBindPoint::eCompute, res->exposure_pipeline.get());
+    cmd.pushDescriptorSet(vk::PipelineBindPoint::eCompute, res->exposure_pipeline.get_layout(), 0, compute_writes);
+    cmd.pushConstants2(exposure_push_constants_info);
+    cmd.dispatch(1, 1, 1);
+
+    cmd.pipelineBarrier2(exposure_dependency);
 
     res->out_image.transition_layout(cmd,
                                      vk::ImageLayout::eTransferSrcOptimal,
@@ -586,7 +658,8 @@ void Renderer::reload_shaders() {
 #endif
 
     res->rt_pipeline = create_rt_pipeline(ctx, res->rt_descriptor_set_layout);
-    res->compute_pipeline = create_compute_pipeline(ctx, res->compute_descriptor_set_layout);
+    res->compute_pipeline = create_compute_pipeline(ctx, res->compute_descriptor_set_layout, "compute.spv");
+    res->exposure_pipeline = create_compute_pipeline(ctx, res->compute_descriptor_set_layout, "autoexposure.spv");
     res->sbt = create_sbt(ctx, res->rt_pipeline);
     frame_count = 1;
 }

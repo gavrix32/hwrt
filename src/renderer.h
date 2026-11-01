@@ -1,10 +1,12 @@
 #pragma once
 
+#include "vulkan/buffer.h"
 #include "vulkan/image.h"
 #include "vulkan/encoder.h"
 #include "vulkan/pipeline.h"
 #include "vulkan/swapchain.h"
 #include "context.h"
+#include "timer.h"
 #include "frame.h"
 #include "scene.h"
 #include "vulkan/sbt.h"
@@ -17,6 +19,7 @@ struct Resources {
 
     RayTracingPipeline rt_pipeline;
     ComputePipeline compute_pipeline;
+    ComputePipeline exposure_pipeline;
 
     ShaderBindingTable sbt;
 
@@ -24,6 +27,8 @@ struct Resources {
     Image out_image;
     ImageView rt_image_view;
     ImageView out_image_view;
+
+    Buffer exposure_buffer;
 
     RenderSettings render_settings;
 };
@@ -37,6 +42,8 @@ class Renderer {
     std::unique_ptr<Swapchain> swapchain;
 
     uint32_t frame_count = 1;
+
+    Timer exposure_timer;
 
 public:
     glm::vec3 sun_dir = glm::normalize(glm::vec3(0.3f, 0.8f, 0.5f));

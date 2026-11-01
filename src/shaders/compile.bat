@@ -16,6 +16,7 @@ call :compile raytrace.rmiss || exit /b 1
 call :compile raytrace.rchit || exit /b 1
 call :compile raytrace.rahit || exit /b 1
 call :compile compute       || exit /b 1
+call :compile autoexposure || exit /b 1
 
 echo Done
 exit /b 0

@@ -75,6 +75,7 @@ The table below demonstrates the visual and mathematical impact of each sampling
 * glTF 2.0 Scene Loading
 * Mesh Instancing
 * Procedural Atmosphere
+* Autoexposure
 * Shader Hot Reload
 * Khronos PBR Neutral Tone mapping
 * Anti-Aliasing

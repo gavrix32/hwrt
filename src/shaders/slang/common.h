@@ -122,12 +122,15 @@ enum class Sun : uint32_t {
 };
 
 struct RenderSettings {
+    // Render settings
     DebugChannel debug_channel;
     uint32_t samples;
     uint32_t max_depth;
     uint32_t iterations;
     float exposure;
     SamplingStrategy sampling_strategy;
+
+    // Sky settings
     EnvironmentType environment_type;
     float3 sky_color;
     float sky_emission;
@@ -136,6 +139,20 @@ struct RenderSettings {
     float sun_emission;
     float sun_radius;
     float light_emission;
+
+    // Auto exposure
+    uint32_t autoexposure;
+    float exposure_compensation;
+    float adaptation_speed;
+    float min_ev;
+    float max_ev;
+    float delta_time;
+};
+
+struct ExposureState {
+    uint32_t sum;
+    uint32_t count;
+    float ev;
 };
 
 struct PushData {

@@ -11,7 +11,7 @@ echo "Compiling shaders..."
 # whenever any source in the directory is newer than its SPIR-V
 NEWEST_SOURCE=$(ls -t "$SHADER_DIR"/*.slang "$SHADER_DIR"/*.h 2>/dev/null | head -n 1)
 
-for SHADER in raytrace.rgen raytrace.rmiss raytrace.rchit raytrace.rahit compute; do
+for SHADER in raytrace.rgen raytrace.rmiss raytrace.rchit raytrace.rahit compute autoexposure; do
     SRC="$SHADER_DIR/$SHADER.slang"
     DST="$OUTPUT_DIR/$SHADER.spv"
 
