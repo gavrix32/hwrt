@@ -10,7 +10,7 @@
 struct Primitive {
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
-    uint32_t material_index;
+    uint32_t material_index = UINT32_MAX;
 };
 
 struct Mesh {

@@ -2,6 +2,8 @@
 
 #include <spdlog/spdlog.h>
 
+#include <stdexcept>
+
 #include "context.h"
 #include "vulkan/encoder.h"
 
@@ -21,6 +23,12 @@ void Scene::add_instance(const std::shared_ptr<Model>& model, const glm::mat4& t
             .first_blas = model_cache[model.get()]
         });
         return;
+    }
+
+    if (images.size() + model->textures.size() > MAX_TEXTURES) {
+        throw std::runtime_error(fmt::format("MAX_TEXTURES is {} while the scene contains {} textures",
+                                             MAX_TEXTURES,
+                                             images.size() + model->textures.size()));
     }
 
     auto first_blas_idx = static_cast<uint32_t>(blases.size());
@@ -425,7 +433,8 @@ void Scene::build_descriptor_set(const Context& ctx) {
     spdlog::info("Building descriptor set...");
 
     if (MAX_TEXTURES < images.size()) {
-        spdlog::error("MAX_TEXTURES is {} while the scene have {} textures", MAX_TEXTURES, images.size());
+        throw std::runtime_error(fmt::format("MAX_TEXTURES is {} while the scene has {} textures",
+                                             MAX_TEXTURES, images.size()));
     }
 
     vk::DescriptorPoolSize pool_size{

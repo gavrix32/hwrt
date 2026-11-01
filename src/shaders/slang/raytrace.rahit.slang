@@ -15,7 +15,7 @@ uint pcg_hash(uint seed) {
 
 float random(inout uint seed) {
     seed = pcg_hash(seed);
-    return float(seed) * (1.0 / 4294967296.0);
+    return float(seed >> 8) * (1.0 / 16777216.0); // [0, 1)
 }
 
 void update_seed(inout uint seed, uint frame) {

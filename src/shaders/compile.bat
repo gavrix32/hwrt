@@ -33,8 +33,10 @@ if not exist "%SRC%" (
 if not exist "%DST%" goto :build
 
 REM Pass paths through the environment, so spaces and quotes stay literal.
+REM Shaders include shared headers (common.h, atmosphere.slang, ...), so compare the SPIR-V
+REM against the newest .slang/.h file in the shader directory, not only against SRC.
 REM Exit codes: 0 = up to date, 1 = rebuild, 2 = timestamp check failed.
-powershell.exe -NoLogo -NoProfile -NonInteractive -Command "$ErrorActionPreference = 'Stop'; try { if ((Get-Item -LiteralPath $env:SRC).LastWriteTimeUtc -gt (Get-Item -LiteralPath $env:DST).LastWriteTimeUtc) { exit 1 }; exit 0 } catch { Write-Error $_ -ErrorAction Continue; exit 2 }"
+powershell.exe -NoLogo -NoProfile -NonInteractive -Command "$ErrorActionPreference = 'Stop'; try { $newest = Get-ChildItem -LiteralPath $env:SHADER_DIR -File | Where-Object { $_.Extension -in '.slang', '.h' } | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1; if ($newest.LastWriteTimeUtc -gt (Get-Item -LiteralPath $env:DST).LastWriteTimeUtc) { exit 1 }; exit 0 } catch { Write-Error $_ -ErrorAction Continue; exit 2 }"
 if errorlevel 2 (
   echo Failed to check timestamps for %NAME%
   exit /b 1

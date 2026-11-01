@@ -5,6 +5,7 @@
 #include <glm/glm.hpp>
 
 #include "vulkan/buffer.h"
+#include "common.h"
 
 class Context;
 
@@ -24,6 +25,7 @@ class FrameManager {
     std::vector<vk::raii::Semaphore> image_available_semaphores;
     std::vector<vk::raii::Semaphore> render_finished_semaphores;
     std::vector<Buffer> uniform_buffers;
+    std::vector<Buffer> render_settings_buffers;
 
 public:
     explicit FrameManager(const Context& ctx, int frames_in_flight, int swapchain_image_count);
@@ -36,4 +38,5 @@ public:
     [[nodiscard]] const vk::raii::Semaphore& get_image_available_semaphore() const;
     [[nodiscard]] const vk::raii::Semaphore& get_render_finished_semaphore(uint32_t image_index) const;
     [[nodiscard]] const Buffer& get_uniform_buffer() const;
+    [[nodiscard]] const Buffer& get_render_settings_buffer() const;
 };

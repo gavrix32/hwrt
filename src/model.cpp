@@ -183,35 +183,53 @@ void Model::process_texture(const fastgltf::Asset& asset, const fastgltf::Image&
     textures.emplace_back(std::move(texture));
 }
 
+// Textures from KHR_texture_basisu / EXT_texture_webp / MSFT_texture_dds
+static std::optional<uint32_t> resolve_image_index(const fastgltf::Asset& asset, const size_t texture_index) {
+    if (texture_index >= asset.textures.size()) return std::nullopt;
+
+    const auto& texture = asset.textures[texture_index];
+    std::optional<size_t> image_index;
+    if (texture.imageIndex.has_value()) image_index = texture.imageIndex.value();
+    else if (texture.webpImageIndex.has_value()) image_index = texture.webpImageIndex.value();
+    else if (texture.basisuImageIndex.has_value()) image_index = texture.basisuImageIndex.value();
+    else if (texture.ddsImageIndex.has_value()) image_index = texture.ddsImageIndex.value();
+
+    if (!image_index.has_value() || image_index.value() >= asset.images.size()) {
+        spdlog::warn("Texture {} has no supported image source (skipped)", texture_index);
+        return std::nullopt;
+    }
+    return static_cast<uint32_t>(image_index.value());
+}
+
 void Model::process_material(const fastgltf::Asset& asset, const fastgltf::Material& gltf_material) {
     Material material{};
 
     if (gltf_material.pbrData.baseColorTexture.has_value()) {
-        const size_t texture_index = gltf_material.pbrData.baseColorTexture.value().textureIndex;
-        const size_t image_index = asset.textures[texture_index].imageIndex.value();
-        material.albedo_index = static_cast<uint32_t>(image_index);
+        if (const auto image_index = resolve_image_index(asset, gltf_material.pbrData.baseColorTexture.value().textureIndex)) {
+            material.albedo_index = image_index.value();
+        }
     }
     material.base_color_factor = glm::make_vec4(gltf_material.pbrData.baseColorFactor.data());
 
     if (gltf_material.normalTexture.has_value()) {
-        const size_t texture_index = gltf_material.normalTexture.value().textureIndex;
-        const size_t image_index = asset.textures[texture_index].imageIndex.value();
-        material.normal_index = static_cast<uint32_t>(image_index);
+        if (const auto image_index = resolve_image_index(asset, gltf_material.normalTexture.value().textureIndex)) {
+            material.normal_index = image_index.value();
+        }
         material.normal_scale = gltf_material.normalTexture.value().scale;
     }
 
     if (gltf_material.pbrData.metallicRoughnessTexture.has_value()) {
-        const size_t texture_index = gltf_material.pbrData.metallicRoughnessTexture.value().textureIndex;
-        const size_t image_index = asset.textures[texture_index].imageIndex.value();
-        material.metallic_roughness_index = static_cast<uint32_t>(image_index);
+        if (const auto image_index = resolve_image_index(asset, gltf_material.pbrData.metallicRoughnessTexture.value().textureIndex)) {
+            material.metallic_roughness_index = image_index.value();
+        }
     }
     material.metallic_factor = gltf_material.pbrData.metallicFactor;
     material.roughness_factor = gltf_material.pbrData.roughnessFactor;
 
     if (gltf_material.emissiveTexture.has_value()) {
-        const size_t texture_index = gltf_material.emissiveTexture.value().textureIndex;
-        const size_t image_index = asset.textures[texture_index].imageIndex.value();
-        material.emissive_index = static_cast<uint32_t>(image_index);
+        if (const auto image_index = resolve_image_index(asset, gltf_material.emissiveTexture.value().textureIndex)) {
+            material.emissive_index = image_index.value();
+        }
     }
     material.emissive_factor = glm::make_vec3(gltf_material.emissiveFactor.data()) * gltf_material.emissiveStrength;
 
@@ -240,9 +258,33 @@ Model::Model(const fastgltf::Asset& asset) {
         process_node(asset, node_index, glm::mat4(1.0f));
     }
 
-    materials.reserve(asset.materials.size());
+    materials.reserve(asset.materials.size() + 1);
     for (const auto& material : asset.materials) {
         process_material(asset, material);
+    }
+
+    // Default material (glTF spec defaults) for primitives without a material
+    // or with an out-of-range material index
+    const auto default_material_index = static_cast<uint32_t>(materials.size());
+    bool default_material_used = false;
+    for (auto& mesh : meshes) {
+        for (auto& primitive : mesh.primitives) {
+            if (primitive.material_index >= default_material_index) {
+                primitive.material_index = default_material_index;
+                default_material_used = true;
+            }
+        }
+    }
+    if (default_material_used) {
+        Material material{};
+        material.base_color_factor = glm::vec4(1.0f);
+        material.normal_scale = 1.0f;
+        material.metallic_factor = 1.0f;
+        material.roughness_factor = 1.0f;
+        material.emissive_factor = glm::vec3(0.0f);
+        material.alpha_mode = AlphaMode::Opaque;
+        material.alpha_cutoff = 0.5f;
+        materials.push_back(material);
     }
 
     textures.reserve(asset.images.size());

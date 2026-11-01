@@ -36,6 +36,17 @@ FrameManager::FrameManager(const Context& ctx, const int frames_in_flight, const
         memcpy(buffer.mapped_ptr(), &uniform, sizeof(Uniform));
         uniform_buffers.push_back(std::move(buffer));
     }
+    for (int i = 0; i < frames_in_flight; ++i) {
+        auto buffer = BufferBuilder()
+                      .size(sizeof(RenderSettings))
+                      .usage(vk::BufferUsageFlagBits::eStorageBuffer |
+                             vk::BufferUsageFlagBits::eShaderDeviceAddress)
+                      .allocation_flags(VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                                        VMA_ALLOCATION_CREATE_MAPPED_BIT)
+                      .build(ctx.get_allocator());
+
+        render_settings_buffers.push_back(std::move(buffer));
+    }
 }
 
 int FrameManager::get_frame_index() const {
@@ -66,4 +77,8 @@ const vk::raii::Semaphore& FrameManager::get_render_finished_semaphore(const uin
 
 const Buffer& FrameManager::get_uniform_buffer() const {
     return uniform_buffers[current_frame];
+}
+
+const Buffer& FrameManager::get_render_settings_buffer() const {
+    return render_settings_buffers[current_frame];
 }

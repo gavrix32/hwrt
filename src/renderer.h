@@ -1,6 +1,5 @@
 #pragma once
 
-#include "vulkan/buffer.h"
 #include "vulkan/image.h"
 #include "vulkan/encoder.h"
 #include "vulkan/pipeline.h"
@@ -27,7 +26,6 @@ struct Resources {
     ImageView out_image_view;
 
     RenderSettings render_settings;
-    Buffer render_settings_buffer;
 };
 
 class Renderer {
@@ -48,7 +46,6 @@ public:
     void draw_frame(const Scene& scene);
     void recreate();
     void reset_frames();
-    void update_settings();
     void reload_shaders();
 
     [[nodiscard]] RenderSettings& get_settings() const {

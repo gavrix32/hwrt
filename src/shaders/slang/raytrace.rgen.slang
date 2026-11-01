@@ -97,9 +97,9 @@ uint rand_pcg() {
     return (word >> 22u) ^ word;
 }
 
+// Returns a value in [0, 1). Uses the top 24 bits so the float conversion can't round up to 1.0
 float random() {
-    uint seed = rand_pcg();
-    return float(seed) / 4294967296.0;
+    return float(rand_pcg() >> 8) * (1.0 / 16777216.0);
 }
 
 float3 sample_uniform_hemisphere() {
@@ -336,7 +336,7 @@ float evaluate_light_pdf(Light light, float3 to_light) {
 }
 
 Light random_light() {
-    uint light_idx = uint(random() * push_data.num_lights);
+    uint light_idx = min(uint(random() * push_data.num_lights), push_data.num_lights - 1);
     return push_data.scene_ptrs.lights[light_idx];
 }
 

@@ -70,8 +70,11 @@ Image::Image(Image&& other) noexcept
       layout(other.layout),
       stage_mask(other.stage_mask),
       access_mask(other.access_mask),
+      mip_levels_(other.mip_levels_),
+      extent_(other.extent_),
       vma_allocation(other.vma_allocation),
       allocator(other.allocator),
+      layers_(other.layers_),
       format_(other.format_),
       metadata_flags(other.metadata_flags) {
     other.handle = nullptr;
@@ -92,7 +95,10 @@ Image& Image::operator=(Image&& other) noexcept {
     stage_mask = other.stage_mask;
     access_mask = other.access_mask;
     vma_allocation = std::exchange(other.vma_allocation, nullptr);
+    mip_levels_ = other.mip_levels_;
+    extent_ = other.extent_;
     allocator = other.allocator;
+    layers_ = other.layers_;
     format_ = other.format_;
     metadata_flags = other.metadata_flags;
 

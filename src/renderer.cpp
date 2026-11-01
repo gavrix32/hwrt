@@ -207,16 +207,6 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
         .light_emission = 1.0f
     };
 
-    auto render_settings_buffer = BufferBuilder()
-                                  .size(sizeof(RenderSettings))
-                                  .usage(vk::BufferUsageFlagBits::eStorageBuffer |
-                                         vk::BufferUsageFlagBits::eShaderDeviceAddress)
-                                  .allocation_flags(
-                                      VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT)
-                                  .build(ctx.get_allocator());
-
-    memcpy(render_settings_buffer.mapped_ptr(), &render_settings, sizeof(render_settings));
-
     ctx.get_device().get_queue().waitIdle();
 
     res = std::make_unique<Resources>(Resources{
@@ -231,7 +221,6 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
         .rt_image_view = std::move(rt_image_view),
         .out_image_view = std::move(out_image_view),
         .render_settings = render_settings,
-        .render_settings_buffer = std::move(render_settings_buffer),
     });
 }
 
@@ -256,6 +245,10 @@ void Renderer::draw_frame(const Scene& scene) {
     }
 
     ctx.get_device().get().resetFences({frame_mgr->get_in_flight_fence()});
+
+    // Update render settings buffer
+    auto& render_settings_buffer = frame_mgr->get_render_settings_buffer();
+    memcpy(render_settings_buffer.mapped_ptr(), &res->render_settings, sizeof(RenderSettings));
 
     encoder->begin(frame_mgr->get_frame_index());
     auto& cmd = encoder->get_cmd();
@@ -343,7 +336,7 @@ void Renderer::draw_frame(const Scene& scene) {
 
     PushData push_data{
         .scene_ptrs = scene.get_scene_ptrs(),
-        .render_settings = res->render_settings_buffer.get_device_address(ctx.get_device()),
+        .render_settings = render_settings_buffer.get_device_address(ctx.get_device()),
         .frame_count = frame_count,
         .num_lights = scene.get_num_lights(),
         .sun_dir = sun_dir
@@ -577,10 +570,6 @@ void Renderer::recreate() {
 
 void Renderer::reset_frames() {
     frame_count = 1;
-}
-
-void Renderer::update_settings() {
-    memcpy(res->render_settings_buffer.mapped_ptr(), &res->render_settings, sizeof(RenderSettings));
 }
 
 void Renderer::reload_shaders() {

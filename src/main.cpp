@@ -25,71 +25,69 @@
 // TODO: Перенести scene storage буферы на GPU!!!
 // TODO: И хелпер для staging buffers
 
-void show_scene_graph(const Scene& scene) {
-    // Instance -> Node -> Mesh -> Primitive
-    ImGui::Begin("Scene Graph");
-    auto& instances = scene.get_instances();
-    for (size_t i = 0; i < instances.size(); ++i) {
-        if (ImGui::TreeNode(reinterpret_cast<void*>(i), "Instance %zu", i)) {
-            auto& model = instances[i].model;
+// static void show_scene_graph(const Scene& scene) {
+//     // Instance -> Node -> Mesh -> Primitive
+//     ImGui::Begin("Scene Graph");
+//     auto& instances = scene.get_instances();
+//     for (size_t i = 0; i < instances.size(); ++i) {
+//         if (ImGui::TreeNode(reinterpret_cast<void*>(i), "Instance %zu", i)) {
+//             auto& model = instances[i].model;
+//
+//             auto& nodes = model->nodes;
+//             // auto& materials = model->materials;
+//             for (size_t j = 0; j < nodes.size(); ++j) {
+//                 if (ImGui::TreeNode(reinterpret_cast<void*>(j), "Node %zu", j)) {
+//                     const auto mesh_index = nodes[j].mesh_index;
+//                     ImGui::Text("Mesh %u", mesh_index); // TODO: Mesh selector
+//
+//                     const auto& transform = nodes[j].transform;
+//
+//                     glm::vec3 scale;
+//                     glm::quat orientation;
+//                     glm::vec3 translation;
+//                     glm::vec3 skew;
+//                     glm::vec4 perspective;
+//                     glm::decompose(transform, scale, orientation, translation, skew, perspective);
+//
+//                     glm::vec3 rotation = glm::eulerAngles(orientation);
+//
+//                     ImGui::DragFloat3("Translation", &translation[0]);
+//                     ImGui::DragFloat3("Rotation", &rotation[0]);
+//                     ImGui::DragFloat3("Scale", &scale[0]);
+//
+//                     auto& mesh = model->meshes[mesh_index];
+//                     auto& primitives = mesh.primitives;
+//                     for (size_t k = 0; k < primitives.size(); ++k) {
+//                         if (ImGui::TreeNode(reinterpret_cast<void*>(j), "Primitive %zu", k)) {
+//                             const auto material_index = primitives[k].material_index;
+//                             // auto& material = materials[material_index];
+//                             ImGui::Text("Material %u", material_index);
+//                             ImGui::TreePop();
+//                         }
+//                     }
+//                     ImGui::TreePop();
+//                 }
+//             }
+//             ImGui::TreePop();
+//         }
+//     }
+//     ImGui::End();
+// }
 
-            auto& nodes = model->nodes;
-            // auto& materials = model->materials;
-            for (size_t j = 0; j < nodes.size(); ++j) {
-                if (ImGui::TreeNode(reinterpret_cast<void*>(j), "Node %zu", j)) {
-                    const auto mesh_index = nodes[j].mesh_index;
-                    ImGui::Text("Mesh %u", mesh_index); // TODO: Mesh selector
-
-                    const auto& transform = nodes[j].transform;
-
-                    glm::vec3 scale;
-                    glm::quat orientation;
-                    glm::vec3 translation;
-                    glm::vec3 skew;
-                    glm::vec4 perspective;
-                    glm::decompose(transform, scale, orientation, translation, skew, perspective);
-
-                    glm::vec3 rotation = glm::eulerAngles(orientation);
-
-                    ImGui::DragFloat3("Translation", &translation[0]);
-                    ImGui::DragFloat3("Rotation", &rotation[0]);
-                    ImGui::DragFloat3("Scale", &scale[0]);
-
-                    auto& mesh = model->meshes[mesh_index];
-                    auto& primitives = mesh.primitives;
-                    for (size_t k = 0; k < primitives.size(); ++k) {
-                        if (ImGui::TreeNode(reinterpret_cast<void*>(j), "Primitive %zu", k)) {
-                            const auto material_index = primitives[k].material_index;
-                            // auto& material = materials[material_index];
-                            ImGui::Text("Material %u", material_index);
-                            ImGui::TreePop();
-                        }
-                    }
-                    ImGui::TreePop();
-                }
-            }
-            ImGui::TreePop();
-        }
-    }
-    ImGui::End();
-}
-
-void show_solid_sky_settings(Renderer& renderer) {
+static void show_solid_sky_settings(Renderer& renderer) {
     static glm::vec3 sky_color = renderer.get_settings().sky_color;
     static float sky_emission = 1.0f;
     if (ImGui::ColorEdit3("Sky Color", &sky_color[0])) {
         renderer.get_settings().sky_color = sky_color * sky_emission;
-        renderer.update_settings();
         renderer.reset_frames();
     }
     if (ImGui::DragFloat("Sky Emission", &sky_emission, 0.01f, 0.0f, 1000.0f)) {
         renderer.get_settings().sky_color = sky_color * sky_emission;
-        renderer.update_settings();
         renderer.reset_frames();
     }
 }
 
-void show_sun_settings(Renderer& renderer) {
+static void show_sun_settings(Renderer& renderer) {
     static glm::vec3 sun_color = renderer.get_settings().sun_color;
     static float sun_emission = renderer.get_settings().sun_emission;
     static float sun_radius = renderer.get_settings().sun_radius;
@@ -97,18 +95,15 @@ void show_sun_settings(Renderer& renderer) {
         renderer.get_settings().environment_type != EnvironmentType::Hdri) {
         if (ImGui::ColorEdit3("Sun Color", &sun_color[0])) {
             renderer.get_settings().sun_color = sun_color;
-            renderer.update_settings();
             renderer.reset_frames();
         }
     }
     if (ImGui::DragFloat("Sun Emission", &sun_emission, 1.0f, 0.0f, 100'000.0f)) {
         renderer.get_settings().sun_emission = sun_emission;
-        renderer.update_settings();
         renderer.reset_frames();
     }
     if (ImGui::DragFloat("Sun Radius", &sun_radius, 0.001f, 0.0f, 1.0f)) {
         renderer.get_settings().sun_radius = sun_radius;
-        renderer.update_settings();
         renderer.reset_frames();
     }
 }
@@ -116,31 +111,31 @@ void show_sun_settings(Renderer& renderer) {
 // r = 0, y = 1 (zenith)
 // r = 1, y = 0 (equator)
 // r = 2, y = -1 (nadir)
-float disk_r_from_sphere_y(const float y) {
-    float abs_y = std::abs(y);
-    float k = 0.5f * std::sqrt(1.0f - abs_y * abs_y);
+static float disk_r_from_sphere_y(const float y) {
+    const float abs_y = std::abs(y);
+    const float k = 0.5f * std::sqrt(1.0f - abs_y * abs_y);
     if (k < 1e-10f) return 0.0f;
     return (-abs_y + std::sqrt(abs_y * abs_y + 4.0f * k * k)) / (2.0f * k);
 }
 
-glm::vec2 sphere_to_disk(const glm::vec3 pos) {
-    float disk_r = disk_r_from_sphere_y(pos.y);
+static glm::vec2 sphere_to_disk(const glm::vec3 pos) {
+    const float disk_r = disk_r_from_sphere_y(pos.y);
     float dual_disk_r = pos.y < 0.0f ? 2.0f - disk_r : disk_r;
-    glm::vec2 xz_plane = {pos.x, pos.z};
-    float xz_len = glm::length(xz_plane);
+    const glm::vec2 xz_plane = {pos.x, pos.z};
+    const float xz_len = glm::length(xz_plane);
     if (xz_len < 1e-10f) {
         return {dual_disk_r, 0.0f};
     }
     return xz_plane / xz_len * dual_disk_r;
 }
 
-glm::vec3 disk_to_sphere(const glm::vec2 pos) {
-    float dual_disk_r = glm::length(pos);
-    bool is_lower = dual_disk_r > 1.0f;
-    float disk_r = is_lower ? 2.0f - dual_disk_r : dual_disk_r;
-    glm::vec2 xz = dual_disk_r > 1e-10f ? pos * (disk_r / dual_disk_r) : glm::vec2(0.0f);
-    float sign = is_lower ? -1.0f : 1.0f;
-    float y = 0.5f * sign * (1.0f - disk_r * disk_r);
+static glm::vec3 disk_to_sphere(const glm::vec2 pos) {
+    const float dual_disk_r = glm::length(pos);
+    const bool is_lower = dual_disk_r > 1.0f;
+    const float disk_r = is_lower ? 2.0f - dual_disk_r : dual_disk_r;
+    const glm::vec2 xz = dual_disk_r > 1e-10f ? pos * (disk_r / dual_disk_r) : glm::vec2(0.0f);
+    const float sign = is_lower ? -1.0f : 1.0f;
+    const float y = 0.5f * sign * (1.0f - disk_r * disk_r);
     return glm::normalize(glm::vec3(xz.x, y, xz.y));
 }
 
@@ -206,11 +201,15 @@ int main(const int argc, char* argv[]) {
         //glm::scale(glm::mat4(1.0f), glm::vec3(0.01f)
 
         for (auto& path : arg_model_paths) {
-            scene.add_instance(asset_manager.get_model(path), glm::mat4(1.0f), ctx);
+            try {
+                scene.add_instance(asset_manager.get_model(path), glm::mat4(1.0f), ctx);
+            } catch (const std::exception& e) {
+                spdlog::error("Failed to load model: {}", e.what());
+            }
         }
 
-        std::default_random_engine generator;
-        std::uniform_real_distribution distribution(0.0f, 360.0f);
+        // std::default_random_engine generator;
+        // std::uniform_real_distribution distribution(0.0f, 360.0f);
 
         // int size = 67;
         // for (int i = 0; i < size; ++i) {
@@ -355,31 +354,26 @@ int main(const int argc, char* argv[]) {
                 static int debug_item_idx = static_cast<int>(renderer.get_settings().debug_channel);
                 if (ImGui::Combo("Debug Channel", &debug_item_idx, debug_channel_items, IM_ARRAYSIZE(debug_channel_items))) {
                     renderer.get_settings().debug_channel = static_cast<DebugChannel>(debug_item_idx);
-                    renderer.update_settings();
                     renderer.reset_frames();
                 }
                 int samples = static_cast<int>(renderer.get_settings().samples);
                 if (ImGui::SliderInt("Samples", &samples, 1, 32)) {
                     renderer.get_settings().samples = std::clamp(samples, 1, 32);
-                    renderer.update_settings();
                     renderer.reset_frames();
                 }
                 int max_depth = static_cast<int>(renderer.get_settings().max_depth);
                 if (ImGui::SliderInt("Max Depth", &max_depth, 0, 32)) {
                     renderer.get_settings().max_depth = std::clamp(max_depth, 0, 32);
-                    renderer.update_settings();
                     renderer.reset_frames();
                 }
                 int iterations = static_cast<int>(renderer.get_settings().iterations);
                 if (ImGui::SliderInt("Iterations", &iterations, -1, 128)) {
                     renderer.get_settings().iterations = iterations;
-                    renderer.update_settings();
                     renderer.reset_frames();
                 }
                 float exposure = renderer.get_settings().exposure;
                 if (ImGui::SliderFloat("Exposure", &exposure, 0.0f, 50.0f)) {
                     renderer.get_settings().exposure = exposure;
-                    renderer.update_settings();
                 }
                 const char* sampling_strategy_items[] = {
                     "Uniform Sampling",
@@ -391,7 +385,6 @@ int main(const int argc, char* argv[]) {
                 if (ImGui::Combo("Sampling Strategy", &sampling_strategy_idx, sampling_strategy_items,
                                  IM_ARRAYSIZE(sampling_strategy_items))) {
                     renderer.get_settings().sampling_strategy = static_cast<SamplingStrategy>(sampling_strategy_idx);
-                    renderer.update_settings();
                     renderer.reset_frames();
                 }
                 const char* environment_type_items[] = {
@@ -404,7 +397,6 @@ int main(const int argc, char* argv[]) {
                 if (ImGui::Combo("Environment Type", &environment_type_idx, environment_type_items,
                                  IM_ARRAYSIZE(environment_type_items))) {
                     renderer.get_settings().environment_type = static_cast<EnvironmentType>(environment_type_idx);
-                    renderer.update_settings();
                     renderer.reset_frames();
                 }
                 switch (renderer.get_settings().environment_type) {
@@ -417,7 +409,6 @@ int main(const int argc, char* argv[]) {
                 static bool enable_sun = true;
                 if (ImGui::Checkbox("Enable Sun", &enable_sun)) {
                     renderer.get_settings().sun = static_cast<Sun>(enable_sun);
-                    renderer.update_settings();
                     renderer.reset_frames();
                 }
                 if (enable_sun) {
@@ -426,13 +417,11 @@ int main(const int argc, char* argv[]) {
                 static float light_emission = renderer.get_settings().light_emission;
                 if (ImGui::DragFloat("Light Emission", &light_emission, 0.1f, 0.0f, 10'000.0f)) {
                     renderer.get_settings().light_emission = light_emission;
-                    renderer.update_settings();
                     renderer.reset_frames();
                 }
                 int fov = static_cast<int>(camera.get_fov());
                 if (ImGui::SliderInt("Field Of View", &fov, 30, 110)) {
                     camera.set_fov(static_cast<float>(fov));
-                    renderer.update_settings();
                     renderer.reset_frames();
                 }
                 if (ImGui::Button("Reload Shaders (R)")) {
