@@ -407,6 +407,16 @@ float3 offset_ray_origin(float3 hitpos, float3 normal) {
     );
 }
 
+// Limits the brightness of a single contribution found after the first bounce (fireflies)
+float3 clamp_indirect(float3 contribution, int depth) {
+    float limit = push_data.render_settings[0].firefly_clamp;
+    float peak = max(contribution.x, max(contribution.y, contribution.z));
+    if (depth == 0 || limit <= 0.0 || peak <= limit) {
+        return contribution;
+    }
+    return contribution * (limit / peak);
+}
+
 float3 path_trace_uniform(RayDesc ray, int max_depth) {
     RenderSettings render_settings = push_data.render_settings[0];
     float3 radiance = 0.0.xxx;
@@ -515,7 +525,7 @@ float3 path_trace_nee(RayDesc ray, int max_depth) {
         TraceRay(tlas, RAY_FLAG_NONE, 0xFF, 0, 0, 0, ray, payload);
 
         if (payload.depth == T_MAX) {
-            radiance += throughput * sky_atmosphere(ray.Direction, push_data.sun_dir);
+            radiance += clamp_indirect(throughput * sky_atmosphere(ray.Direction, push_data.sun_dir), depth);
             float cos_theta = dot(ray.Direction, push_data.sun_dir);
             float cos_max = cos(sun_radius);
             bool sun_is_visible = cos_theta >= cos_max;
@@ -569,7 +579,7 @@ float3 path_trace_nee(RayDesc ray, int max_depth) {
                 float3 brdf = evaluate_brdf(payload.color, payload.metallic, payload.roughness, payload.normal, V, light_dir, brdf_pdf);
                 float light_pdf = evaluate_light_pdf(light, to_light);
                 float3 light_contrib = light.emission * render_settings.light_emission * light_lambert / light_pdf;
-                radiance += throughput * brdf * light_contrib;
+                radiance += clamp_indirect(throughput * brdf * light_contrib, depth);
             }
         }
 
@@ -594,7 +604,7 @@ float3 path_trace_nee(RayDesc ray, int max_depth) {
                     float3 transmittance = sun_transmittance(push_data.sun_dir);
                     float sun_pdf = evaluate_cone_pdf(sun_radius);
                     float3 sun_contrib = transmittance * sun_emission * sun_lambert / sun_pdf;
-                    radiance += throughput * brdf * sun_contrib;
+                    radiance += clamp_indirect(throughput * brdf * sun_contrib, depth);
                 }
             }
         }
@@ -627,7 +637,7 @@ float3 path_trace_mis(RayDesc ray, int max_depth) {
         TraceRay(tlas, RAY_FLAG_NONE, 0xFF, 0, 0, 0, ray, payload);
 
         if (payload.depth == T_MAX) {
-            radiance += throughput * sky_atmosphere(ray.Direction, push_data.sun_dir);
+            radiance += clamp_indirect(throughput * sky_atmosphere(ray.Direction, push_data.sun_dir), depth);
             float cos_theta = dot(ray.Direction, push_data.sun_dir);
             float cos_max = cos(sun_radius);
             bool sun_is_visible = cos_theta >= cos_max;
@@ -640,7 +650,7 @@ float3 path_trace_mis(RayDesc ray, int max_depth) {
                 } else {
                     float sun_pdf = evaluate_cone_pdf(sun_radius);
                     float mis_weight = power_heuristic(last_pdf, sun_pdf);
-                    radiance += throughput * sun_contrib * mis_weight;
+                    radiance += clamp_indirect(throughput * sun_contrib * mis_weight, depth);
                 }
             }
             break;
@@ -660,7 +670,7 @@ float3 path_trace_mis(RayDesc ray, int max_depth) {
                 float light_pdf = distance_squared / (cos_theta * payload.light_area);
                 light_pdf /= push_data.num_lights;
                 float mis_weight = power_heuristic(last_pdf, light_pdf);
-                radiance += throughput * payload.emission * mis_weight;
+                radiance += clamp_indirect(throughput * payload.emission * mis_weight, depth);
             }
             break;
         }
@@ -695,7 +705,7 @@ float3 path_trace_mis(RayDesc ray, int max_depth) {
                 float light_pdf = evaluate_light_pdf(light, to_light);
                 float mis_weight = power_heuristic(light_pdf, brdf_pdf);
                 float3 light_contrib = light.emission * render_settings.light_emission * light_lambert * mis_weight / light_pdf;
-                radiance += throughput * brdf * light_contrib;
+                radiance += clamp_indirect(throughput * brdf * light_contrib, depth);
             }
         }
 
@@ -721,7 +731,7 @@ float3 path_trace_mis(RayDesc ray, int max_depth) {
                     float sun_pdf = evaluate_cone_pdf(sun_radius);
                     float mis_weight = power_heuristic(sun_pdf, brdf_pdf);
                     float3 sun_contrib = transmittance * sun_emission * sun_lambert * mis_weight / sun_pdf;
-                    radiance += throughput * brdf * sun_contrib;
+                    radiance += clamp_indirect(throughput * brdf * sun_contrib, depth);
                 }
             }
         }

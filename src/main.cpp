@@ -428,8 +428,13 @@ int main(const int argc, char* argv[]) {
                     renderer.get_settings().light_emission = light_emission;
                     renderer.reset_frames();
                 }
+                static float firefly_clamp = renderer.get_settings().firefly_clamp;
+                if (ImGui::DragFloat("Firefly Clamp", &firefly_clamp, 0.1f, 0.0f, 1'000.0f)) {
+                    renderer.get_settings().firefly_clamp = firefly_clamp;
+                    renderer.reset_frames();
+                }
                 int fov = static_cast<int>(camera.get_fov());
-                if (ImGui::SliderInt("Field Of View", &fov, 30, 110)) {
+                if (ImGui::SliderInt("Field Of View", &fov, 10, 110)) {
                     camera.set_fov(static_cast<float>(fov));
                     renderer.reset_frames();
                 }

@@ -130,6 +130,7 @@ struct RenderSettings {
     uint32_t iterations;
     float exposure;
     SamplingStrategy sampling_strategy;
+    float firefly_clamp;
 
     // Sky settings
     EnvironmentType environment_type;

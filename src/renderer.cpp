@@ -219,6 +219,7 @@ Renderer::Renderer(Context& ctx_) : ctx(ctx_) {
         .iterations = UINT32_MAX,
         .exposure = 1.0f,
         .sampling_strategy = SamplingStrategy::MultipleImportanceSampling,
+        .firefly_clamp = 10.0f,
         .environment_type = EnvironmentType::Procedural,
         .sky_color = glm::vec3(0.3f, 0.6f, 1.0f),
         .sky_emission = 1.0f,
